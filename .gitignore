@@ -1,0 +1,15 @@
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+.env
+.netrc
+__pycache__/
+*.pyc
+.Python
+.venv/
+venv/
+
+*.log
