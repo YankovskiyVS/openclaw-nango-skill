@@ -1,29 +1,61 @@
 # openclaw-nango-skill
 
-OpenClaw skill **`nango-connector`**: вызовы сторонних API (Yandex, Google, …) через **ai-assistant-nango-proxy** и OAuth-коннекты Nango.
+Marketplace of **granular OpenClaw skills** for Nango integrations (Yandex, Bitrix24, amoCRM, …).
 
-Агент **не** видит OAuth-токены и Nango secret key — только proxy URL и project API key.
+Each skill maps 1:1 to a Nango `provider_config_key`. Install **only** skills for OAuth integrations the user connected on this EvoClaw — not the whole tree.
+
+Agent never sees OAuth tokens or Nango secrets — only proxy URL and project API key.
 
 ## Layout
 
-```
-nango-connector/
-  SKILL.md                 # инструкция для агента (frontmatter + workflow)
-  scripts/nango_proxy.py   # CLI helper
-  references/
-    providers.md           # provider_config_key и примеры путей
-    api-reference.md       # контракт proxy
+```text
+openclaw-nango-skill/
+  CATALOG.md              # install matrix: skill ↔ provider_config_key
+  _shared/                # source of truth for CLI + API docs
+    scripts/nango_proxy.py
+    references/api-reference.md
+  scripts/generate_skills.py
+  skills/
+    yandex-disk/          # one directory = one installable skill
+      SKILL.md
+      scripts/nango_proxy.py
+      references/…
+    bitrix24-crm/
+    amocrm-crm/
+    …
 ```
 
-Этот репозиторий — дистрибутив скилла для установки в EvoClaw / OpenClaw. Исходник рядом с proxy: `ai-assistant-nango-proxy/.openclaw/nango-connector/`.
+Regenerate skill packages after editing the catalog:
+
+```bash
+python3 scripts/generate_skills.py
+```
+
+## Install rule
+
+| User connected in console | Install skill dir |
+| --- | --- |
+| Yandex Disk | `skills/yandex-disk/` |
+| Bitrix24 CRM | `skills/bitrix24-crm/` |
+| amoCRM deals | `skills/amocrm-crm/` |
+| … | see [CATALOG.md](CATALOG.md) |
+
+Copy each chosen directory into the agent skills workspace, e.g.:
+
+```text
+…/.openclaw/workspace/<agent>/skills/yandex-disk/
+…/.openclaw/workspace/<agent>/skills/bitrix24-crm/
+```
+
+Do **not** install skills for providers without a completed OAuth connection.
 
 ## Required env
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `NANGO_PROXY_URL` | yes | Base URL proxy **без** trailing slash |
-| `EVOLUTION_PROJECT_ID` | yes | UUID проекта (часто уже есть в pod OpenClaw) |
-| `EVOCLAW_ID` | yes | UUID этого EvoClaw |
+| `NANGO_PROXY_URL` | yes | Base URL proxy **without** trailing slash |
+| `EVOLUTION_PROJECT_ID` | yes | Project UUID |
+| `EVOCLAW_ID` | yes | This EvoClaw UUID |
 | `CLOUDRU_API_KEY` | yes | Project API key; IAM `ai-agents.systems.invoke` |
 
 Stage (in-cluster):
@@ -32,52 +64,35 @@ Stage (in-cluster):
 NANGO_PROXY_URL=http://ai-assistant-nango-proxy.ai-assistant-nango-proxy.svc.cluster.local:8080
 ```
 
-Если `NANGO_PROXY_URL` не задан, CLI использует тот же stage URL по умолчанию.
+If `NANGO_PROXY_URL` is unset, the CLI defaults to that stage URL.
 
-## Install into OpenClaw
+Connection id in Nango:
 
-1. Скопировать каталог `nango-connector/` в skills workspace агента (рядом с другими skills), например:
-   ```text
-   …/.openclaw/workspace/<agent>/skills/nango-connector/
-   ```
-   или в bundled skills, если ваш init подхватывает bundled каталог.
+```text
+project-{EVOLUTION_PROJECT_ID}-evoclaw-{EVOCLAW_ID}
+```
 
-2. Прокинуть в pod OpenClaw недостающие env (`NANGO_PROXY_URL`, `EVOCLAW_ID`).  
-   `EVOLUTION_PROJECT_ID` и `CLOUDRU_API_KEY` обычно уже выставляет evoclaw-operator.
+Skills only **call** the proxy; they do not create or revoke OAuth.
 
-3. Один раз в сессии (если pip ещё не поставил зависимость):
-   ```bash
-   pip install httpx
-   ```
+## How connected providers are known
 
-4. OAuth для нужного провайдера должен быть выполнен в Cloud.ru console для **этого** EvoClaw. Connection id в Nango строится как:
-   ```text
-   project-{EVOLUTION_PROJECT_ID}-evoclaw-{EVOCLAW_ID}
-   ```
+There is no live “what is connected” list inside the skill.
 
-Скилл **не** создаёт и не отключает OAuth — только вызывает proxy.
-
-## How the agent learns connected providers
-
-**Живого списка «что подключено» нет.**
-
-- Возможные провайдеры: `nango-connector/references/providers.md` (статический каталог).
-- Факт connection: только в момент вызова. Proxy ищет запись в evoclaw-manager, иначе в Nango по `end_user.id`. Нет коннекта → ошибка → агент просит reconnect в console.
+- Which skill to ship: driven by console OAuth + [CATALOG.md](CATALOG.md).
+- At call time: proxy looks up the connection; missing OAuth → error → agent asks the user to reconnect that `provider_config_key` in console.
 
 ## Smoke test
 
-Из pod с выставленными env:
+With env set and Yandex ID OAuth connected:
 
 ```bash
-cd nango-connector
-python3 scripts/nango_proxy.py call yandex info \
+cd skills/yandex-id
+python3 scripts/nango_proxy.py call yandex-id info \
   --query 'format=json' \
   --json-output
 ```
 
-Ожидается HTTP 200 и JSON профиля Yandex ID (`login`, `default_email`, …).
-
-Для текущего stage-интеграции `yandex` это единственный стабильный путь. Calendar / Translate — **другие** интеграции (см. `providers.md`).
+(`yandex` is an alias of `yandex-id` where configured.)
 
 ## API shape
 
@@ -86,21 +101,19 @@ python3 scripts/nango_proxy.py call yandex info \
 Authorization: Api-Key {CLOUDRU_API_KEY}
 ```
 
-Не передавать `Connection-Id` / Nango secret — их выставляет proxy.
-
-Подробности: `nango-connector/references/api-reference.md`.
+Details: `_shared/references/api-reference.md` (copied into each skill).
 
 ## Troubleshooting
 
 | Symptom | Likely cause |
 | --- | --- |
-| `Missing required value: …` | Не задан env / CLI override |
+| `Missing required value: …` | Env / CLI override missing |
 | HTTP 401 from proxy | API key / IAM `ai-agents.systems.invoke` |
-| HTTP 404 from proxy | Неверный `EVOCLAW_ID` / evo-claw не найден |
-| `nango connection not found` | OAuth не завершён или webhook не записал connection |
-| Timeout | Нет сети / Istio egress до nango-proxy |
-| Upstream 4xx | Неверный path провайдера или протухший токен → reconnect |
+| HTTP 404 from proxy | Wrong `EVOCLAW_ID` / evo-claw not found |
+| `nango connection not found` | OAuth not finished or webhook did not store connection |
+| Timeout | No network / Istio egress to nango-proxy |
+| Upstream 4xx | Wrong provider path or expired token → reconnect |
 
 ## Dependency
 
-- Python 3 + `httpx` (см. `required_pip` в `SKILL.md`)
+Python 3 + `httpx` (`required_pip` in each `SKILL.md`).
