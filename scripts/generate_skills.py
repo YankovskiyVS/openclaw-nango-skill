@@ -19,7 +19,6 @@ CATALOG: list[dict] = [
         "title": "Yandex ID",
         "family": "yandex",
         "provider_config_key": "yandex-id",
-        "aliases": ["yandex"],
         "description": "Call Yandex ID (login.info/email/avatar) via Nango proxy after OAuth connect",
         "when": "User asks about Yandex profile, login, email, avatar, or account identity.",
         "scopes": "login:info, login:email, login:avatar",

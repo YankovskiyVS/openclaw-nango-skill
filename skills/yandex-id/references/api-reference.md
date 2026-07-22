@@ -33,7 +33,7 @@ Path parameters:
 | --- | --- |
 | `project_id` | Evolution project UUID (`EVOLUTION_PROJECT_ID`) |
 | `evoclaw_id` | EvoClaw instance UUID (`EVOCLAW_ID`) |
-| `provider_config_key` | Nango integration key (e.g. `yandex`) |
+| `provider_config_key` | Nango integration key (e.g. `yandex-id`) |
 | `path` | Remainder of URL — upstream provider API path |
 
 Supported methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`.
