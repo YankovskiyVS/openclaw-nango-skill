@@ -10,6 +10,7 @@ import {
   validateProviderKey,
   type ProviderKey,
 } from "./catalog.js";
+import { resolveActionRegistration } from "./action-registry.js";
 import {
   encodeOrderedQuery,
   isReadMethod,
@@ -154,18 +155,6 @@ const CRITICAL_TARGET_SEGMENTS = new Set([
   "remove",
   "send",
 ]);
-
-export const ACTION_OPERATION_REGISTRY = Object.freeze({
-  "yandex-mail": Object.freeze({
-    "resolve-mailbox": "read",
-    "list-messages": "read",
-    "get-message": "read",
-    "send-message": "mutation",
-  }),
-  "amocrm-chats": Object.freeze({
-    "send-message": "mutation",
-  }),
-} as const);
 
 export type AllowedClassification = Readonly<{
   status: "allowed";
@@ -733,22 +722,6 @@ function classifyPagination(value: unknown): AllowedClassification {
   };
 }
 
-function registeredActionKind(
-  providerConfigKey: ProviderKey,
-  actionName: string,
-): OperationKind | undefined {
-  if (
-    providerConfigKey !== "yandex-mail" &&
-    providerConfigKey !== "amocrm-chats"
-  ) {
-    return undefined;
-  }
-  const actions = ACTION_OPERATION_REGISTRY[providerConfigKey];
-  return Object.hasOwn(actions, actionName)
-    ? actions[actionName as keyof typeof actions]
-    : undefined;
-}
-
 function classifyAction(value: unknown): AllowedClassification {
   if (!isPlainRecord(value)) {
     fail("invalid_params");
@@ -781,11 +754,11 @@ function classifyAction(value: unknown): AllowedClassification {
     fail("invalid_action");
   }
   validateOptionalTimeout(value.timeoutMs);
-  const operationKind = registeredActionKind(
+  const registration = resolveActionRegistration(
     providerConfigKey,
     actionName,
   );
-  if (!operationKind) {
+  if (!registration) {
     fail("unsupported_action");
   }
   if (
@@ -800,7 +773,7 @@ function classifyAction(value: unknown): AllowedClassification {
   );
   return {
     status: "allowed",
-    operationKind,
+    operationKind: registration.operationKind,
     providerConfigKey,
     target: boundedTarget(`${providerConfigKey}:${actionName}`),
     severity: critical ? "critical" : "warning",

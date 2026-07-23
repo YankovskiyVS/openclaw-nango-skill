@@ -13,8 +13,14 @@ import {
   createProxyClient,
   type ProxyClient,
 } from "./proxy-client.js";
+import { createActionTool } from "./tools/action.js";
+import { createDiskTransferExecutor } from "./tools/disk-transfer.js";
 import { createPaginateTool } from "./tools/paginate.js";
-import { createRequestTool } from "./tools/request.js";
+import {
+  createRequestTool,
+  runtimeConfigFailure,
+  toolExecutionResult,
+} from "./tools/request.js";
 
 const TOOL_NAMES = [
   "nango_proxy_request",
@@ -24,32 +30,24 @@ const TOOL_NAMES = [
 ] as const;
 
 const TOOL_NAME_SET = new Set<string>(TOOL_NAMES);
-const PLACEHOLDER_TOOL_NAMES = [
-  "nango_action",
-  "nango_disk_transfer",
-] as const;
-const PLACEHOLDER_TOOL_NAME_SET = new Set<string>(
-  PLACEHOLDER_TOOL_NAMES,
-);
-const PLACEHOLDER_PARAMETERS = Type.Object(
-  {},
+const DISK_DIRECTION = Type.Union([
+  Type.Literal("upload"),
+  Type.Literal("download"),
+]);
+const DISK_TRANSFER_PARAMETERS = Type.Object(
+  {
+    providerConfigKey: Type.Literal("yandex-disk"),
+    direction: Type.Optional(DISK_DIRECTION),
+    operation: Type.Optional(DISK_DIRECTION),
+    localPath: Type.String({ minLength: 1, maxLength: 4_096 }),
+    remotePath: Type.String({ minLength: 1, maxLength: 4_096 }),
+    overwrite: Type.Optional(Type.Boolean()),
+    timeoutMs: Type.Optional(
+      Type.Integer({ minimum: 1, maximum: 3_600_000 }),
+    ),
+  },
   { additionalProperties: false },
 );
-const PLACEHOLDER_DETAILS = {
-  ok: false,
-  code: "not_implemented",
-  outcome: "not_started",
-} as const;
-const PLACEHOLDER_TEXT = JSON.stringify(PLACEHOLDER_DETAILS);
-
-function isEmptyRecord(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    Object.keys(value).length === 0
-  );
-}
 
 const plugin: OpenClawPluginDefinition = definePluginEntry({
   id: "nango-tools",
@@ -85,47 +83,40 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
       }),
       { optional: true },
     );
+    api.registerTool(
+      createActionTool({
+        approvals,
+        ...(runtimeConfig === undefined ? {} : { config: runtimeConfig }),
+        fetch: (input, init) => globalThis.fetch(input, init),
+      }),
+      { optional: true },
+    );
 
-    for (const toolName of PLACEHOLDER_TOOL_NAMES) {
-      api.registerTool(
-        {
-          name: toolName,
-          label: toolName,
-          description: `${toolName} is not implemented yet.`,
-          parameters: PLACEHOLDER_PARAMETERS,
-          async execute(toolCallId, params) {
-            if (!isEmptyRecord(params)) {
-              const authorization = approvals.authorizeExecution(
-                toolName,
-                toolCallId,
-                params,
-              );
-              if (!authorization.ok) {
-                const details = {
-                  ok: false,
-                  code: authorization.code,
-                  outcome: "not_started",
-                } as const;
-                return {
-                  content: [
-                    {
-                      type: "text" as const,
-                      text: JSON.stringify(details),
-                    },
-                  ],
-                  details,
-                };
-              }
-            }
-            return {
-              content: [{ type: "text" as const, text: PLACEHOLDER_TEXT }],
-              details: { ...PLACEHOLDER_DETAILS },
-            };
-          },
+    const diskExecutor =
+      runtimeConfig !== undefined && proxyClient !== undefined
+        ? createDiskTransferExecutor(runtimeConfig, {
+            approvalVerifier: approvals,
+            proxyClient,
+          })
+        : undefined;
+    api.registerTool(
+      {
+        name: "nango_disk_transfer",
+        label: "Nango Yandex Disk transfer",
+        description:
+          "Upload or download one bounded Yandex Disk file through approved roots.",
+        parameters: DISK_TRANSFER_PARAMETERS,
+        async execute(toolCallId, params) {
+          if (diskExecutor === undefined) {
+            return toolExecutionResult(runtimeConfigFailure());
+          }
+          return toolExecutionResult(
+            await diskExecutor.execute(toolCallId, params),
+          );
         },
-        { optional: true },
-      );
-    }
+      },
+      { optional: true },
+    );
 
     api.on(
       "before_tool_call",
@@ -134,22 +125,11 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
           return;
         }
         const toolCallId = event.toolCallId ?? context.toolCallId;
-        const decision = approvals.beforeToolCall({
+        return approvals.beforeToolCall({
           toolName: event.toolName,
           params: event.params,
           ...(toolCallId ? { toolCallId } : {}),
         });
-        if (
-          decision?.block &&
-          isEmptyRecord(event.params) &&
-          PLACEHOLDER_TOOL_NAME_SET.has(event.toolName)
-        ) {
-          return {
-            block: true,
-            blockReason: "Nango tools are not implemented",
-          };
-        }
-        return decision;
       },
       { priority: 100, timeoutMs: 1_000 },
     );

@@ -1769,6 +1769,14 @@ export function createDiskTransferExecutor(
       toolCallId: string,
       params: unknown,
     ): Promise<ToolResult> {
+      if (config.disk === undefined) {
+        return safeFailure(
+          new DiskTransferError(
+            "validation",
+            "capability_unavailable",
+          ),
+        );
+      }
       let normalized: NormalizedParams;
       let resolved: ResolvedLocalPath;
       try {

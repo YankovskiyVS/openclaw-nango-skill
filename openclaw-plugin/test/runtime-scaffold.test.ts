@@ -90,8 +90,8 @@ describe("runtime registration", () => {
     }
     expect(tools[0]?.tool.parameters.properties).not.toEqual({});
     expect(tools[1]?.tool.parameters.properties).not.toEqual({});
-    expect(tools[2]?.tool.parameters.properties).toEqual({});
-    expect(tools[3]?.tool.parameters.properties).toEqual({});
+    expect(tools[2]?.tool.parameters.properties).not.toEqual({});
+    expect(tools[3]?.tool.parameters.properties).not.toEqual({});
   });
 
   test("keeps the synchronous approval policy and leaves other tools alone", () => {
@@ -118,25 +118,11 @@ describe("runtime registration", () => {
     ).toBeUndefined();
   });
 
-  test("fails real tools closed on missing config and keeps only action/disk placeholders", async () => {
+  test("fails all real tools closed on missing config", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(new Error("unexpected network I/O"));
     const { tools } = registerScaffold();
-    const placeholder = {
-      content: [
-        {
-          type: "text",
-          text: '{"ok":false,"code":"not_implemented","outcome":"not_started"}',
-        },
-      ],
-      details: {
-        ok: false,
-        code: "not_implemented",
-        outcome: "not_started",
-      },
-    };
-
     await expect(
       tools[0]?.tool.execute("request-call", {
         providerConfigKey: "amocrm-crm",
@@ -167,11 +153,31 @@ describe("runtime registration", () => {
       },
     });
     await expect(
-      tools[2]?.tool.execute("action-call", {}),
-    ).resolves.toEqual(placeholder);
+      tools[2]?.tool.execute("action-call", {
+        providerConfigKey: "yandex-mail",
+        actionName: "resolve-mailbox",
+      }),
+    ).resolves.toMatchObject({
+      details: {
+        ok: false,
+        error: { code: "invalid_runtime_config" },
+        outcome: "not_started",
+      },
+    });
     await expect(
-      tools[3]?.tool.execute("disk-call", {}),
-    ).resolves.toEqual(placeholder);
+      tools[3]?.tool.execute("disk-call", {
+        providerConfigKey: "yandex-disk",
+        direction: "upload",
+        localPath: "/allowed/file.bin",
+        remotePath: "disk:/file.bin",
+      }),
+    ).resolves.toMatchObject({
+      details: {
+        ok: false,
+        error: { code: "invalid_runtime_config" },
+        outcome: "not_started",
+      },
+    });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -211,5 +217,47 @@ describe("runtime registration", () => {
     expect(JSON.stringify(result)).not.toContain(
       "runtime-secret-sentinel",
     );
+  });
+
+  test("reports independently disabled Action and Disk capabilities without I/O", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("unexpected network I/O"));
+    const { tools } = registerScaffold({
+      cloudru: {
+        proxyBaseUrl: "https://proxy.example.test",
+        projectId: "project",
+        evoClawId: "evoclaw",
+        apiKey: "runtime-secret-sentinel",
+      },
+    });
+
+    await expect(
+      tools[2]?.tool.execute("disabled-action", {
+        providerConfigKey: "yandex-mail",
+        actionName: "resolve-mailbox",
+      }),
+    ).resolves.toMatchObject({
+      details: {
+        ok: false,
+        error: { code: "capability_unavailable" },
+        outcome: "not_started",
+      },
+    });
+    await expect(
+      tools[3]?.tool.execute("disabled-disk", {
+        providerConfigKey: "yandex-disk",
+        direction: "download",
+        localPath: "/allowed/file.bin",
+        remotePath: "disk:/file.bin",
+      }),
+    ).resolves.toMatchObject({
+      details: {
+        ok: false,
+        error: { code: "capability_unavailable" },
+        outcome: "not_started",
+      },
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
