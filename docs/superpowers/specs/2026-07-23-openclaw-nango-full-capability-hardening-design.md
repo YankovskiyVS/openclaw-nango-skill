@@ -1,7 +1,8 @@
 # OpenClaw Nango full-capability hardening
 
-Date: 2026-07-23  
-Branch: `feat/production-hardening`  
+Date: 2026-07-23
+
+Branch: `feat/production-hardening`
 Upstream baseline: `12903d917509fab4a4da4d7dd0489a42c00286e6`
 
 ## Goal
