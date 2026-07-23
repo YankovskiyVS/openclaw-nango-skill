@@ -1,0 +1,424 @@
+{
+  "schema_version": 1,
+  "upstream_baseline": "12903d917509fab4a4da4d7dd0489a42c00286e6",
+  "risk_categories": [
+    "routing",
+    "pagination",
+    "mutation_approval",
+    "unknown_outcome",
+    "yandex_mail_adapter",
+    "yandex_calendar_caldav",
+    "yandex_disk_transfer",
+    "yandex_direct_json_rpc",
+    "yandex_delivery_api_contract",
+    "yandex_maps_public_api",
+    "yandex_market_auth",
+    "bitrix24_crm",
+    "amocrm_chats_adapter"
+  ],
+  "cases": [
+    {
+      "id": "yandex-id-read-profile",
+      "skill": "yandex-id",
+      "request": "Read the connected Yandex user's profile.",
+      "risk_categories": ["routing"],
+      "expected": {
+        "tool": "nango_proxy_request",
+        "provider_config_key": "yandex-id",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return only the confirmed profile response."
+      }
+    },
+    {
+      "id": "yandex-disk-list-root",
+      "skill": "yandex-disk",
+      "request": "List every item in the Yandex Disk root within bounded limits.",
+      "risk_categories": ["routing", "pagination", "yandex_disk_transfer"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "yandex-disk",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return the bounded pages and their termination reason."
+      }
+    },
+    {
+      "id": "yandex-disk-upload",
+      "skill": "yandex-disk",
+      "request": "Upload a local file to Yandex Disk.",
+      "risk_categories": ["routing", "mutation_approval", "yandex_disk_transfer"],
+      "expected": {
+        "tool": "nango_disk_transfer",
+        "provider_config_key": "yandex-disk",
+        "operation_kind": "mutation",
+        "approval_behavior": "allow_once",
+        "verification_behavior": "Confirm transfer metadata and read the remote resource metadata after upload."
+      }
+    },
+    {
+      "id": "yandex-mail-list-messages",
+      "skill": "yandex-mail",
+      "request": "List recent Yandex Mail messages.",
+      "risk_categories": ["routing", "pagination", "yandex_mail_adapter"],
+      "expected": {
+        "tool": "nango_action",
+        "provider_config_key": "yandex-mail",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return bounded message metadata from the registered read action."
+      }
+    },
+    {
+      "id": "yandex-mail-send-message",
+      "skill": "yandex-mail",
+      "request": "Send a Yandex Mail message with an attachment.",
+      "risk_categories": ["routing", "mutation_approval", "unknown_outcome", "yandex_mail_adapter"],
+      "expected": {
+        "tool": "nango_action",
+        "provider_config_key": "yandex-mail",
+        "operation_kind": "mutation",
+        "approval_behavior": "allow_once",
+        "verification_behavior": "Confirm the returned Message-ID; if dispatch is uncertain, inspect sent state before retrying."
+      }
+    },
+    {
+      "id": "yandex-calendar-list-events",
+      "skill": "yandex-calendar",
+      "request": "List Yandex Calendar events through CalDAV.",
+      "risk_categories": ["routing", "pagination", "yandex_calendar_caldav"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "yandex-calendar",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return the bounded CalDAV REPORT result without treating it as a JSON API."
+      }
+    },
+    {
+      "id": "yandex-calendar-create-event",
+      "skill": "yandex-calendar",
+      "request": "Create a Yandex Calendar event through CalDAV.",
+      "risk_categories": ["routing", "mutation_approval", "yandex_calendar_caldav"],
+      "expected": {
+        "tool": "nango_proxy_request",
+        "provider_config_key": "yandex-calendar",
+        "operation_kind": "mutation",
+        "approval_behavior": "allow_once",
+        "verification_behavior": "Read the event URL and compare its ETag after creation."
+      }
+    },
+    {
+      "id": "yandex-direct-list-campaigns",
+      "skill": "yandex-direct",
+      "request": "List all Yandex Direct campaigns through JSON RPC.",
+      "risk_categories": ["routing", "pagination", "yandex_direct_json_rpc"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "yandex-direct",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Advance Page.Offset within bounds and return the terminal page."
+      }
+    },
+    {
+      "id": "yandex-direct-update-campaign",
+      "skill": "yandex-direct",
+      "request": "Update a Yandex Direct campaign.",
+      "risk_categories": ["routing", "mutation_approval", "unknown_outcome", "yandex_direct_json_rpc"],
+      "expected": {
+        "tool": "nango_proxy_request",
+        "provider_config_key": "yandex-direct",
+        "operation_kind": "mutation",
+        "approval_behavior": "allow_once",
+        "verification_behavior": "Read the campaign after success; after a dispatched timeout, inspect state before any retry."
+      }
+    },
+    {
+      "id": "yandex-maps-public-bookmarks",
+      "skill": "yandex-maps",
+      "request": "Read Yandex Maps saved places through the public bookmarks API.",
+      "risk_categories": ["routing", "yandex_maps_public_api"],
+      "expected": {
+        "tool": null,
+        "provider_config_key": "yandex-maps",
+        "operation_kind": "unsupported",
+        "approval_behavior": "not_applicable",
+        "verification_behavior": "Do not invent an endpoint; report that no supported public bookmarks route is confirmed."
+      }
+    },
+    {
+      "id": "yandex-market-list-campaigns",
+      "skill": "yandex-market",
+      "request": "List Yandex Market partner campaigns.",
+      "risk_categories": ["routing", "pagination", "yandex_market_auth"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "yandex-market",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return bounded campaign pages without claiming OAuth support was live-tested."
+      }
+    },
+    {
+      "id": "yandex-delivery-create-offer",
+      "skill": "yandex-delivery",
+      "request": "Create a Yandex Delivery offer using the matching API product contract.",
+      "risk_categories": ["routing", "mutation_approval", "unknown_outcome", "yandex_delivery_api_contract"],
+      "expected": {
+        "tool": "nango_proxy_request",
+        "provider_config_key": "yandex-delivery",
+        "operation_kind": "mutation",
+        "approval_behavior": "allow_once",
+        "verification_behavior": "Fetch the created offer after success; if dispatch is uncertain, query state before retrying."
+      }
+    },
+    {
+      "id": "bitrix24-current-user",
+      "skill": "bitrix24",
+      "request": "Read the current Bitrix24 user.",
+      "risk_categories": ["routing"],
+      "expected": {
+        "tool": "nango_proxy_request",
+        "provider_config_key": "bitrix24",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return the confirmed current-user response."
+      }
+    },
+    {
+      "id": "bitrix24-crm-list-leads",
+      "skill": "bitrix24-crm",
+      "request": "List all Bitrix24 CRM leads within bounded limits.",
+      "risk_categories": ["routing", "pagination", "bitrix24_crm"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "bitrix24-crm",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Follow the Bitrix24 next/start offset within configured bounds."
+      }
+    },
+    {
+      "id": "bitrix24-crm-update-deal",
+      "skill": "bitrix24-crm",
+      "request": "Update a Bitrix24 CRM deal.",
+      "risk_categories": ["routing", "mutation_approval", "unknown_outcome", "bitrix24_crm"],
+      "expected": {
+        "tool": "nango_proxy_request",
+        "provider_config_key": "bitrix24-crm",
+        "operation_kind": "mutation",
+        "approval_behavior": "allow_once",
+        "verification_behavior": "Read the deal after success; after a dispatched timeout, inspect it before any retry."
+      }
+    },
+    {
+      "id": "bitrix24-tasks-list",
+      "skill": "bitrix24-tasks",
+      "request": "List Bitrix24 tasks within bounded limits.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "bitrix24-tasks",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return bounded task pages and their termination reason."
+      }
+    },
+    {
+      "id": "bitrix24-disk-list-storage",
+      "skill": "bitrix24-disk",
+      "request": "List Bitrix24 Disk storages.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "bitrix24-disk",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return bounded storage pages and their termination reason."
+      }
+    },
+    {
+      "id": "bitrix24-im-list-dialogs",
+      "skill": "bitrix24-im",
+      "request": "List recent Bitrix24 dialogs.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "bitrix24-im",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return bounded dialog pages and their termination reason."
+      }
+    },
+    {
+      "id": "bitrix24-user-list-departments",
+      "skill": "bitrix24-user",
+      "request": "List Bitrix24 departments.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "bitrix24-user",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return bounded department pages and their termination reason."
+      }
+    },
+    {
+      "id": "bitrix24-calendar-list-sections",
+      "skill": "bitrix24-calendar",
+      "request": "List Bitrix24 Calendar sections.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "bitrix24-calendar",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return bounded calendar section pages and their termination reason."
+      }
+    },
+    {
+      "id": "bitrix24-bizproc-list-templates",
+      "skill": "bitrix24-bizproc",
+      "request": "List Bitrix24 business-process templates.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "bitrix24-bizproc",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return bounded template pages and their termination reason."
+      }
+    },
+    {
+      "id": "bitrix24-telephony-list-lines",
+      "skill": "bitrix24-telephony",
+      "request": "List Bitrix24 external telephony lines.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "bitrix24-telephony",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return bounded telephony pages and their termination reason."
+      }
+    },
+    {
+      "id": "amocrm-read-account",
+      "skill": "amocrm",
+      "request": "Read the connected amoCRM account.",
+      "risk_categories": ["routing"],
+      "expected": {
+        "tool": "nango_proxy_request",
+        "provider_config_key": "amocrm",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Return the confirmed account response."
+      }
+    },
+    {
+      "id": "amocrm-crm-list-leads",
+      "skill": "amocrm-crm",
+      "request": "List amoCRM leads within bounded limits.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "amocrm-crm",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Follow only verified same-origin next links within bounds."
+      }
+    },
+    {
+      "id": "amocrm-catalog-list",
+      "skill": "amocrm-catalog",
+      "request": "List amoCRM catalogs within bounded limits.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "amocrm-catalog",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Follow only verified same-origin next links within bounds."
+      }
+    },
+    {
+      "id": "amocrm-chats-list-talks",
+      "skill": "amocrm-chats",
+      "request": "List amoCRM talks within bounded limits.",
+      "risk_categories": ["routing", "pagination", "amocrm_chats_adapter"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "amocrm-chats",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Follow only verified same-origin next links within bounds."
+      }
+    },
+    {
+      "id": "amocrm-chats-send-message",
+      "skill": "amocrm-chats",
+      "request": "Send an amoCRM Chats message.",
+      "risk_categories": ["routing", "mutation_approval", "unknown_outcome", "amocrm_chats_adapter"],
+      "expected": {
+        "tool": "nango_action",
+        "provider_config_key": "amocrm-chats",
+        "operation_kind": "mutation",
+        "approval_behavior": "allow_once",
+        "verification_behavior": "Confirm the action message id; if dispatch is uncertain, inspect chat state before retrying."
+      }
+    },
+    {
+      "id": "amocrm-telephony-list-events",
+      "skill": "amocrm-telephony",
+      "request": "List amoCRM call events within bounded limits.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "amocrm-telephony",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Follow only verified same-origin next links within bounds."
+      }
+    },
+    {
+      "id": "amocrm-tasks-list",
+      "skill": "amocrm-tasks",
+      "request": "List amoCRM tasks within bounded limits.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "amocrm-tasks",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Follow only verified same-origin next links within bounds."
+      }
+    },
+    {
+      "id": "amocrm-events-list",
+      "skill": "amocrm-events",
+      "request": "List amoCRM activity events within bounded limits.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "amocrm-events",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Follow only verified same-origin next links within bounds."
+      }
+    },
+    {
+      "id": "amocrm-users-list",
+      "skill": "amocrm-users",
+      "request": "List amoCRM users within bounded limits.",
+      "risk_categories": ["routing", "pagination"],
+      "expected": {
+        "tool": "nango_proxy_paginate",
+        "provider_config_key": "amocrm-users",
+        "operation_kind": "read",
+        "approval_behavior": "not_required",
+        "verification_behavior": "Follow only verified same-origin next links within bounds."
+      }
+    }
+  ]
+}
