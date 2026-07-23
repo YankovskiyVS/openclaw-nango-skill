@@ -73,7 +73,9 @@ Vitest; Nango Action Functions with Zod.
 6. Test and implement structured error layers and `unknown` outcome for
    dispatched mutation timeouts.
 7. Test and implement CLI options on both the root parser and `call`
-   subcommand; remove the secret-bearing `--api-key` option.
+   subcommand. Add `--api-key-file` for safe overrides; retain the legacy
+   `--api-key` as a hidden, deprecated compatibility option that emits a
+   warning so no existing callable behavior is removed.
 
 After every slice run:
 
