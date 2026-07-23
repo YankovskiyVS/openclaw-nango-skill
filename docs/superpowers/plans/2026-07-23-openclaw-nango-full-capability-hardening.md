@@ -214,16 +214,22 @@ Run the matching test after each slice and the plugin suite at task end.
 2. Test credentials are injected from runtime config, not tool parameters.
 3. Test redirect rejection and complete response-header redaction.
 4. Test JSON, text, binary and oversized responses.
-5. Test explicit proxy metadata maps to a layer while ambiguous upstream errors
-   remain `unknown_upstream`.
-6. Test bounded read retries with `Retry-After`.
-7. Test mutations are never retried and dispatched timeouts return
+5. Test provider-controlled response fields cannot select a trusted layer;
+   absent a separately authenticated backend discriminator, ambiguous upstream
+   errors remain `unknown_upstream`.
+6. Test bounded read retries for network errors, `408`, `429` and `5xx`, with a
+   clipped `Retry-After`.
+7. Test mutations are never retried; post-dispatch network, timeout and stream
+   failures plus ambiguous `502`, `503` and `504` responses return
    `outcome: "unknown"`.
 8. Test the total operation deadline covers request dispatch, retry waits and
    response streaming; configured byte caps are enforced on streamed bytes.
 
 Use an injected `fetch` implementation; assertions target the real transport
-envelope and policy, not mock call counts alone.
+envelope and policy, not mock call counts alone. Stream at most the configured
+cap plus one byte, cancel oversized bodies, compute a full digest only for an
+accepted complete binary body, and treat retry behavior as an application-level
+guarantee without mutating the process-wide Undici dispatcher.
 
 ## Task 7: Implement exact per-call approvals
 

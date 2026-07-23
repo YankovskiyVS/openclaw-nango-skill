@@ -253,25 +253,33 @@ provider credentials are always removed.
 Failures contain:
 
 - `layer`: `validation`, `approval`, `cloudru_proxy`, `nango`,
-  `provider`, `network` or `local_io`;
+  `provider`, `unknown_upstream`, `network` or `local_io`;
 - stable `code`;
 - safe message;
 - HTTP status when one exists;
 - `retryable`;
 - `outcome`: `not_started`, `confirmed_failed` or `unknown`.
 
-Provider status is not reinterpreted as a Cloud.ru or OAuth error. The layer is
-derived from explicit proxy error metadata when available; otherwise it is
-reported as `unknown_upstream` rather than inventing a reconnect diagnosis.
+Provider status is not reinterpreted as a Cloud.ru or OAuth error. A response
+body is provider-controlled even when it contains fields such as `proxyError`,
+so those fields alone never select a trusted layer. Unless the transport has a
+separately authenticated backend discriminator, an upstream failure is
+reported as `unknown_upstream` rather than inventing a Cloud.ru, Nango,
+provider or reconnect diagnosis.
 
-Reads may retry bounded transient network errors, `429` and `5xx`, respecting
-`Retry-After`. Mutations are never retried by the plugin. If a mutation times
-out after dispatch, the result is `outcome: "unknown"` and the skill instructs
-the agent to verify state before considering any repeat.
+Reads may retry bounded transient network errors, `408`, `429` and `5xx`,
+respecting a clipped `Retry-After`. These are application-level retry
+guarantees: the plugin does not alter the process-wide Undici dispatcher.
+Mutations are never retried by the plugin. If a mutation encounters a network,
+timeout or response-stream failure after dispatch, or receives an ambiguous
+`502`, `503` or `504`, the result is `outcome: "unknown"` and the skill
+instructs the agent to verify state before considering any repeat.
 
 Text responses are UTF-8 decoded with replacement and capped. JSON is parsed
-only when the content type is JSON. Binary bodies are represented by size,
-content type and the full SHA-256 digest, not printed.
+only when the content type is JSON. An accepted binary body is represented by
+its size, content type and full SHA-256 digest, not printed. When any response
+exceeds the configured cap, streaming stops at cap plus one byte and the error
+does not claim a digest of bytes that were never read.
 
 ## Provider capability preservation
 
