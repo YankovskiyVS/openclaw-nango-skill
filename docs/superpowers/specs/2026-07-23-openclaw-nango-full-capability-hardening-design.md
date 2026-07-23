@@ -30,7 +30,8 @@ Cloud.ru API key to the model, tool result, process arguments or logs.
 
 The repository ships four coordinated layers:
 
-1. `openclaw-plugin/` — a TypeScript ESM mixed OpenClaw plugin.
+1. `openclaw-plugin/` — the TypeScript ESM mixed OpenClaw plugin
+   `nango-tools`.
 2. `skills/` — the existing 25 generated Agent Skills, rewritten to call the
    plugin tools and to describe provider-specific workflows.
 3. `nango-integrations/` — optional Nango Action Functions for protocols and
@@ -41,6 +42,37 @@ The repository ships four coordinated layers:
 The existing Python client stays as a diagnostic and compatibility interface.
 It is hardened and tested, but skills no longer make shell execution their
 primary runtime path.
+
+## Plugin configuration
+
+The plugin reads one strict, nested config object. Every object rejects unknown
+properties. Defaults are applied once at registration; the resulting runtime
+config is immutable.
+
+- `cloudru` is required and contains the exact proxy base URL, project id,
+  EvoClaw id and API key.
+- `transport` bounds request timeout, total operation deadline, read retries,
+  backoff and request/response bytes.
+- `pagination` bounds pages/items and maps dynamic providers such as amoCRM and
+  Bitrix24 to operator-configured exact HTTPS origins. Human-readable catalog
+  base strings are never used as a security allowlist.
+- `actions` is optional. Its transport is either `proxy`, with one exact
+  operator-configured Cloud.ru action endpoint, or `direct`, with an exact
+  HTTPS Nango API origin and Nango environment secret.
+- `disk` is optional and contains separate absolute upload/download roots,
+  transfer limits and approved Yandex transfer host suffixes.
+
+Secrets use OpenClaw SecretInput values in source configuration. The manifest
+declares `configContracts.secretInputs.paths` for `cloudru.apiKey` and the
+direct-mode `actions.transport.secretKey`, with matching sensitive UI hints.
+OpenClaw resolves them into literal strings in the active runtime snapshot
+before `api.pluginConfig` reaches the plugin. An unresolved SecretRef object
+fails closed; the plugin does not implement its own environment, file or exec
+secret resolver.
+
+The public config projection contains only booleans, schemes, limit values and
+counts. It omits secrets, SecretRef identifiers, tenant ids, the derived
+connection id, exact local paths and request data.
 
 ## Runtime tools
 
@@ -95,14 +127,25 @@ HMAC operations.
 
 The action transport has two explicit modes:
 
-- recommended `proxy`: call a configured Cloud.ru action endpoint with the
-  project API key;
-- optional `direct`: call Nango `/action/trigger` with a secret available only
-  to plugin runtime.
+- recommended `proxy`: `POST` one configured exact Cloud.ru action URL with
+  the project API key and a bounded JSON envelope containing the derived
+  project, EvoClaw, connection, provider, action and input values;
+- optional `direct`: call the fixed `/action/trigger` path on the configured
+  exact Nango HTTPS origin with `Authorization`, `Connection-Id` and
+  `Provider-Config-Key` headers and a body containing only `action_name` and
+  `input`.
 
 Direct mode is disabled unless the operator configures it. Secrets are read
 inside `execute`, never accepted as tool parameters, and never returned.
 Action names are restricted to the registry shipped with the plugin.
+
+The Cloud.ru action endpoint wire contract is repository-defined: a successful
+response is `{"ok": true, "result": ...}`; a failure is
+`{"ok": false, "error": {"layer", "code", "message", "retryable"}}`.
+The plugin reports `capability_unavailable` until an endpoint implementing that
+contract is configured. This repository does not claim that the existing
+provider proxy already implements it. Direct Nango mode remains a complete
+operator-controlled fallback.
 
 Yandex Mail actions do not open IMAP/SMTP sockets themselves. Nango's current
 Functions compiler rejects arbitrary third-party modules and does not allow
@@ -118,8 +161,10 @@ and overwriting downloads require approval. Downloads to a new file are also
 treated as mutations because they modify the local filesystem.
 
 The tool first obtains a transfer URL through the Nango proxy, validates the
-returned HTTPS URL, performs the transfer without forwarding Cloud.ru or Nango
-headers, limits redirects and response size, and returns only metadata.
+returned HTTPS URL against the configured Yandex transfer-host suffixes and an
+SSRF-safe DNS policy, performs the transfer without forwarding Cloud.ru or
+Nango headers, limits redirects and response size, and returns only metadata.
+Every redirect is revalidated; an arbitrary public HTTPS URL is not sufficient.
 
 ## Approval policy
 
@@ -345,8 +390,9 @@ never presented as passing unless credentials were used in that run.
 - Minimum Node version: `22.19`.
 - Python compatibility client: Python 3.10+ with `httpx`.
 - The plugin is disabled until installed and enabled by the operator.
-- Mutating tools are optional in the plugin manifest and require both
-  `tools.allow` exposure and per-call approval.
+- All four plugin tools are optional in the manifest and require explicit
+  `tools.allow` exposure. Mutating calls additionally require per-call
+  approval.
 - Existing skill directory names and provider keys do not change.
 - Installation docs explain plugin approval routing independently from exec
   approvals.

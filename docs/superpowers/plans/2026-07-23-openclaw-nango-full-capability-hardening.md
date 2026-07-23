@@ -148,7 +148,8 @@ python3 -m pytest tests/test_generate_skills.py tests/test_validate_skills.py -q
 
 **GREEN**
 
-1. Add TypeScript ESM metadata and a minimal `definePluginEntry` entry.
+1. Add TypeScript ESM metadata and a minimal `definePluginEntry` entry with
+   plugin id `nango-tools`.
 2. Use focused imports from `openclaw/plugin-sdk/plugin-entry` and `typebox`.
 3. Do not use the Codex plugin manifest or `openclaw/plugin-sdk/core`.
 4. Register four strict placeholder tools as optional. Install a synchronous
@@ -175,6 +176,7 @@ npm pack --workspace openclaw-plugin --dry-run --json
 - Create: `openclaw-plugin/src/validation.ts`
 - Create: `openclaw-plugin/test/catalog.test.ts`
 - Create: `openclaw-plugin/test/validation.test.ts`
+- Modify: `openclaw-plugin/openclaw.plugin.json`
 
 **RED / GREEN slices:**
 
@@ -183,7 +185,17 @@ npm pack --workspace openclaw-plugin --dry-run --json
    fragments, absolute URLs, backslashes and Unicode/control characters.
 3. Test ordered/repeated query encoding.
 4. Test header allow/deny rules and body exclusivity/limits.
-5. Test strict plugin config parsing and secret-free public config projection.
+5. Test the strict nested plugin config for Cloud.ru, transport, pagination,
+   optional Action transport and optional Disk transfer settings. Reject
+   unknown properties, unresolved runtime SecretRefs and invalid cross-field
+   bounds rather than silently cleaning them.
+6. Test manifest `configContracts.secretInputs.paths` and sensitive UI hints
+   exactly cover `cloudru.apiKey` and
+   `actions.transport.secretKey`.
+7. Test deterministic defaults, exact link-origin allowlists for dynamic
+   amoCRM/Bitrix24 tenants, immutable runtime config and a deeply secret-free
+   public projection. Do not derive security origins from catalog display
+   strings or implement an ambient `process.env` fallback.
 
 Run the matching test after each slice and the plugin suite at task end.
 
@@ -207,6 +219,8 @@ Run the matching test after each slice and the plugin suite at task end.
 6. Test bounded read retries with `Retry-After`.
 7. Test mutations are never retried and dispatched timeouts return
    `outcome: "unknown"`.
+8. Test the total operation deadline covers request dispatch, retry waits and
+   response streaming; configured byte caps are enforced on streamed bytes.
 
 Use an injected `fetch` implementation; assertions target the real transport
 envelope and policy, not mock call counts alone.
@@ -254,7 +268,8 @@ envelope and policy, not mock call counts alone.
 
 1. Test the request tool accepts every advertised method/body family and
    returns the common envelope.
-2. Test amoCRM link pagination accepts only verified provider-origin links.
+2. Test amoCRM/Bitrix24 link pagination accepts only exact operator-configured
+   provider origins; static Yandex origins come from the code registry.
 3. Test Bitrix24 `next/start`, Disk `offset/total` and Direct
    `Page.Offset/LimitedBy` termination.
 4. Test hard `maxPages`/`maxItems` caps and repeated-page loop detection.
@@ -275,8 +290,10 @@ envelope and policy, not mock call counts alone.
 2. Test upload link acquisition then credential-free PUT.
 3. Test download link acquisition and a server-side authenticated follow-link
    mode; return a clear capability error when the deployed proxy lacks it.
-4. Test HTTPS-only transfer URLs, redirect caps and complete separation of
-   Cloud.ru/Nango headers.
+4. Test HTTPS-only transfer URLs, configured Yandex host-suffix allowlists,
+   SSRF-safe DNS resolution, redirect caps and complete separation of
+   Cloud.ru/Nango headers. Revalidate every redirect and reject arbitrary HTTPS
+   hosts, loopback, private, link-local and DNS-rebinding targets.
 5. Test streaming limits, temp-file atomic rename and cleanup after failures.
 
 ## Task 10: Implement Nango Action transport
@@ -291,9 +308,15 @@ envelope and policy, not mock call counts alone.
 **RED / GREEN slices:**
 
 1. Test only registered provider/action pairs are callable.
-2. Test recommended proxy mode uses the Cloud.ru API key and derived connection.
-3. Test direct mode is disabled by default and reads the Nango secret only from
-   runtime configuration.
+2. Test recommended proxy mode uses one exact configured endpoint, the
+   Cloud.ru API key, derived connection and the documented bounded
+   request/response envelope. Return `capability_unavailable` when no compatible
+   endpoint is configured; do not assume the existing provider proxy supports
+   Actions.
+3. Test direct mode is disabled by default, reads the resolved Nango secret
+   only from runtime configuration, and calls only the fixed
+   `/action/trigger` path on the configured exact HTTPS origin with the current
+   Nango headers/body contract.
 4. Test action input/output limits, safe errors and mutation classification.
 5. Test no secret appears in approval text, request summaries or results.
 
@@ -400,12 +423,14 @@ Document:
 
 - plugin build/install/enable and `tools.allow`;
 - plugin approval routing separately from exec approvals;
-- proxy versus direct action transport and secret placement;
+- OpenClaw SecretRef JSON, proxy versus direct action transport, exact proxy
+  wire contract and secret placement;
 - Nango compile/dryrun/deploy commands without embedding credentials;
 - live smoke tests by provider family;
 - exact limitations: credentials were not used, actions were not deployed,
   Maps bookmarks has no confirmed public API, and proxy follow-link/action
-  endpoints require backend support.
+  endpoints require backend support; do not claim interactive external-plugin
+  secret configuration without an isolated proof.
 
 ## Task 15: CI and final verification
 
