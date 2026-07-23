@@ -243,6 +243,10 @@ function ledgerLockKey(connectionId: string, scopeId: string): string {
     return `openclaw-amocrm-send-${digest}`;
 }
 
+function messageLedgerKey(msgid: string): string {
+    return createHash('sha256').update(msgid, 'utf8').digest('hex');
+}
+
 function readLedgerMetadata(value: unknown): ActionMetadata | null {
     const candidate = value === null || value === undefined ? {} : value;
     const parsed = actionMetadataSchema.safeParse(candidate);
@@ -251,13 +255,13 @@ function readLedgerMetadata(value: unknown): ActionMetadata | null {
 
 function prunedLedger(
     entries: Record<string, LedgerEntry>,
-    currentMsgid: string,
+    currentKey: string,
     now: number
 ): Record<string, LedgerEntry> | null {
     const next = Object.fromEntries(
         Object.entries(entries).filter(([, entry]) => entry.expiresAt > now)
     ) as Record<string, LedgerEntry>;
-    if (Object.hasOwn(next, currentMsgid) || Object.keys(next).length < MAX_LEDGER_ENTRIES) {
+    if (Object.hasOwn(next, currentKey) || Object.keys(next).length < MAX_LEDGER_ENTRIES) {
         return next;
     }
 
@@ -299,11 +303,12 @@ async function beginLedgerSend(
         return { kind: 'unavailable' };
     }
 
-    const entries = prunedLedger(metadata[LEDGER_METADATA_FIELD] ?? {}, msgid, now);
+    const ledgerKey = messageLedgerKey(msgid);
+    const entries = prunedLedger(metadata[LEDGER_METADATA_FIELD] ?? {}, ledgerKey, now);
     if (!entries) {
         return { kind: 'unavailable' };
     }
-    const existing = entries[msgid];
+    const existing = Object.hasOwn(entries, ledgerKey) ? entries[ledgerKey] : undefined;
     if (existing) {
         if (existing.bodyHash !== bodyHash) {
             return { kind: 'conflict' };
@@ -317,7 +322,7 @@ async function beginLedgerSend(
         return { kind: 'unknown' };
     }
 
-    entries[msgid] = {
+    entries[ledgerKey] = {
         state: 'pending',
         bodyHash,
         expiresAt: now + LEDGER_TTL_MS
@@ -341,7 +346,7 @@ async function persistLedgerState(
     msgid: string,
     entry: LedgerEntry
 ): Promise<boolean> {
-    context.entries[msgid] = entry;
+    context.entries[messageLedgerKey(msgid)] = entry;
     try {
         await nango.updateMetadata({
             [LEDGER_METADATA_FIELD]: context.entries

@@ -617,6 +617,9 @@ async function inspectLocalPath(
     throw new DiskTransferError("local_io", "unsafe_local_path");
   }
   const canonicalRoot = await fileSystem.realpath(resolved.root);
+  if (path.resolve(resolved.root) !== path.resolve(canonicalRoot)) {
+    throw new DiskTransferError("local_io", "unsafe_local_path");
+  }
   await assertTrustedDirectoryChain(
     fileSystem,
     canonicalRoot,

@@ -41,7 +41,9 @@ afterEach(async () => {
 });
 
 async function temporaryRoots() {
-  const base = await mkdtemp(path.join(tmpdir(), "nango-disk-transfer-"));
+  const base = await realpath(
+    await mkdtemp(path.join(tmpdir(), "nango-disk-transfer-")),
+  );
   temporaryDirectories.push(base);
   const uploadRoot = path.join(base, "uploads");
   const downloadRoot = path.join(base, "downloads");
@@ -437,6 +439,40 @@ describe("approval and local path boundary", () => {
     const result = await executor.execute(
       "tool-call-shared-root",
       uploadParams(source),
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { layer: "local_io", code: "unsafe_local_path" },
+      outcome: "not_started",
+    });
+    expect(deps.proxyClient.request).not.toHaveBeenCalled();
+    expect(deps.transferTransport.request).not.toHaveBeenCalled();
+  });
+
+  test("rejects a configured root reached through an intermediate symlink", async () => {
+    const roots = await temporaryRoots();
+    const secureParent = path.join(roots.base, "secure-parent");
+    const secureRoot = path.join(secureParent, "allowed");
+    const sharedParent = path.join(roots.base, "shared-parent");
+    const bridge = path.join(sharedParent, "bridge");
+    await mkdir(secureParent);
+    await mkdir(secureRoot);
+    await mkdir(sharedParent);
+    await chmod(sharedParent, 0o777);
+    await symlink(secureParent, bridge);
+    const aliasedRoot = path.join(bridge, "allowed");
+    const aliasedSource = path.join(aliasedRoot, "source.bin");
+    await writeFile(path.join(secureRoot, "source.bin"), "payload");
+    const deps = dependencies();
+    const executor = createDiskTransferExecutor(
+      runtimeConfig(aliasedRoot, roots.downloadRoot),
+      deps.value,
+    );
+
+    const result = await executor.execute(
+      "tool-call-aliased-root",
+      uploadParams(aliasedSource),
     );
 
     expect(result).toMatchObject({

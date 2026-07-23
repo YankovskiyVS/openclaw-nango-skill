@@ -463,6 +463,23 @@ describe('shared amoCRM send idempotency ledger', () => {
         expect(nango.post).toHaveBeenCalledTimes(1);
     });
 
+    it.each(['__proto__', 'constructor', 'toString'])(
+        'treats prototype-like msgid %s as an ordinary idempotency key',
+        async (msgid) => {
+            const nango = nangoMock({
+                response: providerResponse({ ref_id: msgid })
+            });
+            const input = { ...validInput, msgid };
+
+            const first = await sendMessageAction.exec(nango as never, input);
+            const second = await sendMessageAction.exec(nango as never, input);
+
+            expect(first).toEqual(second);
+            expect(first).toMatchObject({ ok: true, outcome: 'confirmed' });
+            expect(nango.post).toHaveBeenCalledTimes(1);
+        }
+    );
+
     it('rejects reuse of one msgid for a different message body', async () => {
         const nango = nangoMock();
 
