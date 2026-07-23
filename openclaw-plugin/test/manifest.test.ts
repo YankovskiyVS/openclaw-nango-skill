@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, test } from "vitest";
 
+import { PLUGIN_CONFIG_SCHEMA } from "../src/config.js";
+
 const PLUGIN_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const TOOL_NAMES = [
   "nango_proxy_request",
@@ -27,11 +29,7 @@ describe("OpenClaw plugin manifest", () => {
       name: "Nango Tools",
       activation: { onStartup: true },
       contracts: { tools: TOOL_NAMES },
-      configSchema: {
-        type: "object",
-        additionalProperties: false,
-        properties: {},
-      },
+      configSchema: PLUGIN_CONFIG_SCHEMA,
     });
     expect(Object.keys(manifest.toolMetadata as object).sort()).toEqual(
       [...TOOL_NAMES].sort(),
