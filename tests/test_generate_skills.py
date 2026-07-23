@@ -1,7 +1,9 @@
 import json
+import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -153,13 +155,17 @@ def _make_repository(tmp_path, seed_skills=False):
     return root
 
 
-def _run_generator(root, *arguments):
+def _run_generator(root, *arguments, umask=None):
+    preexec_fn = None
+    if umask is not None:
+        preexec_fn = lambda: os.umask(umask)
     return subprocess.run(
         [sys.executable, str(root / "scripts" / "generate_skills.py"), *arguments],
         cwd=root,
         text=True,
         capture_output=True,
         check=False,
+        preexec_fn=preexec_fn,
     )
 
 
@@ -167,17 +173,23 @@ def _snapshot(root, include_metadata):
     snapshot = {}
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root).as_posix()
-        stat = path.lstat()
+        path_stat = path.lstat()
         if path.is_symlink():
             value = ("symlink", path.readlink().as_posix())
         elif path.is_dir():
             value = ("directory",)
-        else:
+        elif path.is_file():
             value = ("file", path.read_bytes())
+        else:
+            value = ("special", stat.S_IFMT(path_stat.st_mode))
         if include_metadata:
-            value += (stat.st_mode, stat.st_mtime_ns)
+            value += (path_stat.st_mode, path_stat.st_mtime_ns)
         snapshot[relative] = value
     return snapshot
+
+
+def _mode(path):
+    return stat.S_IMODE(path.stat().st_mode)
 
 
 def test_catalog_is_the_ordered_source_for_all_existing_capabilities():
@@ -262,13 +274,24 @@ def test_endpoint_commands_are_basedir_relative_and_references_resolve():
     assert missing_references == []
 
 
-def test_all_packages_contain_the_canonical_shared_proxy_byte_for_byte():
-    canonical = (ROOT / "_shared" / "scripts" / "nango_proxy.py").read_bytes()
+def test_all_packages_contain_canonical_shared_assets_with_canonical_modes():
+    canonical_proxy_path = ROOT / "_shared" / "scripts" / "nango_proxy.py"
+    canonical_reference_path = ROOT / "_shared" / "references" / "api-reference.md"
+    canonical_proxy = canonical_proxy_path.read_bytes()
+    canonical_reference = canonical_reference_path.read_bytes()
     stale = []
     for skill_id in EXPECTED_SKILLS:
-        packaged = ROOT / "skills" / skill_id / "scripts" / "nango_proxy.py"
-        if packaged.read_bytes() != canonical:
-            stale.append(skill_id)
+        package = ROOT / "skills" / skill_id
+        packaged_proxy = package / "scripts" / "nango_proxy.py"
+        packaged_reference = package / "references" / "api-reference.md"
+        if packaged_proxy.read_bytes() != canonical_proxy:
+            stale.append((skill_id, "proxy bytes"))
+        if _mode(packaged_proxy) != 0o755:
+            stale.append((skill_id, "proxy mode"))
+        if packaged_reference.read_bytes() != canonical_reference:
+            stale.append((skill_id, "reference bytes"))
+        if _mode(packaged_reference) != 0o644:
+            stale.append((skill_id, "reference mode"))
     assert stale == []
 
 
@@ -369,6 +392,60 @@ def test_check_detects_generated_file_mode_drift_without_writing(tmp_path):
     assert "stale: skills/yandex-id/scripts/nango_proxy.py" in (
         result.stdout + result.stderr
     )
+
+
+def test_generation_and_check_use_canonical_modes_across_umasks(tmp_path):
+    root = _make_repository(tmp_path)
+
+    generated = _run_generator(root, umask=0o077)
+
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+    assert _mode(root / "CATALOG.md") == 0o644
+    wrong_modes = []
+    for skill_id in EXPECTED_SKILLS:
+        package = root / "skills" / skill_id
+        expected_modes = {
+            "SKILL.md": 0o644,
+            "references/api-reference.md": 0o644,
+            "references/endpoints.md": 0o644,
+            "scripts/nango_proxy.py": 0o755,
+        }
+        for relative, expected_mode in expected_modes.items():
+            actual_mode = _mode(package / relative)
+            if actual_mode != expected_mode:
+                wrong_modes.append((skill_id, relative, actual_mode))
+    assert wrong_modes == []
+
+    before = _snapshot(root, include_metadata=True)
+    checked = _run_generator(root, "--check", umask=0o002)
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+    assert _snapshot(root, include_metadata=True) == before
+
+
+def test_check_reports_extra_paths_of_every_filesystem_type(tmp_path):
+    root = _make_repository(tmp_path)
+    generated = _run_generator(root)
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+    root_extra = root / "skills" / "root-extra.txt"
+    root_extra.write_text("extra\n", encoding="utf-8")
+    (root / "skills" / "root-extra-link").symlink_to(root_extra)
+    package = root / "skills" / "yandex-id"
+    (package / "empty-extra").mkdir()
+    os.mkfifo(package / "extra.fifo")
+    before = _snapshot(root, include_metadata=True)
+
+    checked = _run_generator(root, "--check")
+
+    assert checked.returncode == 1
+    assert _snapshot(root, include_metadata=True) == before
+    output = checked.stdout + checked.stderr
+    for path in (
+        "skills/root-extra.txt",
+        "skills/root-extra-link",
+        "skills/yandex-id/empty-extra",
+        "skills/yandex-id/extra.fifo",
+    ):
+        assert "extra: {}".format(path) in output
 
 
 def test_two_generations_are_byte_stable_and_never_double_braces(tmp_path):

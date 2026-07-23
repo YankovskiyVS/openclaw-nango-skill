@@ -53,6 +53,15 @@ GENERATED_PACKAGE_FILES = (
     "references/endpoints.md",
     "scripts/nango_proxy.py",
 )
+TEXT_FILE_MODE = 0o644
+EXECUTABLE_FILE_MODE = 0o755
+CATALOG_FILE_MODE = TEXT_FILE_MODE
+GENERATED_PACKAGE_MODES = {
+    "SKILL.md": TEXT_FILE_MODE,
+    "references/api-reference.md": TEXT_FILE_MODE,
+    "references/endpoints.md": TEXT_FILE_MODE,
+    "scripts/nango_proxy.py": EXECUTABLE_FILE_MODE,
+}
 REQUIRED_ENV = (
     "NANGO_PROXY_URL",
     "EVOLUTION_PROJECT_ID",
@@ -367,6 +376,11 @@ def render_catalog(entries):
     return "\n".join(lines)
 
 
+def _write_text(path, content):
+    path.write_text(content, encoding="utf-8")
+    path.chmod(TEXT_FILE_MODE)
+
+
 def render_tree(stage_root, entries):
     canonical_proxy = SHARED / "scripts" / "nango_proxy.py"
     canonical_reference = SHARED / "references" / "api-reference.md"
@@ -377,21 +391,30 @@ def render_tree(stage_root, entries):
         destination = stage_root / "skills" / entry["id"]
         (destination / "scripts").mkdir(parents=True)
         (destination / "references").mkdir(parents=True)
-        (destination / "SKILL.md").write_text(
-            render_skill(entry), encoding="utf-8"
+        _write_text(
+            destination / "SKILL.md",
+            render_skill(entry),
         )
-        (destination / "references" / "endpoints.md").write_text(
-            render_endpoints(entry), encoding="utf-8"
+        _write_text(
+            destination / "references" / "endpoints.md",
+            render_endpoints(entry),
         )
         shutil.copy2(
             canonical_proxy, destination / "scripts" / "nango_proxy.py"
+        )
+        (destination / "scripts" / "nango_proxy.py").chmod(
+            EXECUTABLE_FILE_MODE
         )
         shutil.copy2(
             canonical_reference,
             destination / "references" / "api-reference.md",
         )
-    (stage_root / "CATALOG.md").write_text(
-        render_catalog(entries), encoding="utf-8"
+        (destination / "references" / "api-reference.md").chmod(
+            TEXT_FILE_MODE
+        )
+    _write_text(
+        stage_root / "CATALOG.md",
+        render_catalog(entries),
     )
 
 

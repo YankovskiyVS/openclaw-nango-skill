@@ -4,12 +4,16 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import stat
 import sys
 from pathlib import Path
 
 from generate_skills import (
+    CATALOG_FILE_MODE,
     GENERATED_PACKAGE_FILES,
+    GENERATED_PACKAGE_MODES,
     REQUIRED_ENV,
     ROOT,
     load_catalog,
@@ -88,6 +92,18 @@ def _validate_embedded_json(path, errors):
             )
 
 
+def _all_package_paths(package):
+    paths = {}
+    for directory, dirnames, filenames in os.walk(
+        str(package), topdown=True, followlinks=False
+    ):
+        parent = Path(directory)
+        for name in dirnames + filenames:
+            path = parent / name
+            paths[path.relative_to(package).as_posix()] = path
+    return paths
+
+
 def _validate_package(entry, errors):
     skill_id = entry["id"]
     package = ROOT / "skills" / skill_id
@@ -99,12 +115,21 @@ def _validate_package(entry, errors):
         )
         return
     expected_files = set(GENERATED_PACKAGE_FILES)
-    actual_files = {
-        path.relative_to(package).as_posix()
-        for path in package.rglob("*")
-        if path.is_file() or path.is_symlink()
-    }
-    invalid_expected_file = False
+    expected_directories = {"references", "scripts"}
+    expected_paths = expected_files | expected_directories
+    actual_paths = _all_package_paths(package)
+    invalid_expected_path = False
+
+    for relative in sorted(expected_directories):
+        generated_path = package / relative
+        if generated_path.is_symlink() or not generated_path.is_dir():
+            errors.append(
+                "{}: generated path must be a regular directory: {}".format(
+                    skill_id, relative
+                )
+            )
+            invalid_expected_path = True
+
     for relative in sorted(expected_files):
         generated_path = package / relative
         if generated_path.is_symlink():
@@ -113,17 +138,27 @@ def _validate_package(entry, errors):
                     skill_id, relative
                 )
             )
-            invalid_expected_file = True
+            invalid_expected_path = True
         elif not generated_path.is_file():
             errors.append(
                 "{}: missing generated file {}".format(skill_id, relative)
             )
-            invalid_expected_file = True
-    for relative in sorted(actual_files - expected_files):
+            invalid_expected_path = True
+        else:
+            actual_mode = stat.S_IMODE(generated_path.stat().st_mode)
+            expected_mode = GENERATED_PACKAGE_MODES[relative]
+            if actual_mode != expected_mode:
+                errors.append(
+                    "{}: non-canonical mode {} (expected {:04o})".format(
+                        skill_id, relative, expected_mode
+                    )
+                )
+
+    for relative in sorted(set(actual_paths) - expected_paths):
         errors.append(
-            "{}: unexpected generated file {}".format(skill_id, relative)
+            "{}: unexpected package path {}".format(skill_id, relative)
         )
-    if invalid_expected_file:
+    if invalid_expected_path:
         return
 
     skill_path = package / "SKILL.md"
@@ -159,6 +194,14 @@ def _validate_package(entry, errors):
         errors.append(
             "{}: non-canonical scripts/nango_proxy.py".format(skill_id)
         )
+    canonical_reference = (
+        ROOT / "_shared" / "references" / "api-reference.md"
+    )
+    packaged_reference = package / "references" / "api-reference.md"
+    if packaged_reference.read_bytes() != canonical_reference.read_bytes():
+        errors.append(
+            "{}: non-canonical references/api-reference.md".format(skill_id)
+        )
 
     for relative in BASEDIR_REFERENCE.findall(skill_text):
         if not (package / relative).is_file():
@@ -166,7 +209,12 @@ def _validate_package(entry, errors):
                 "{}: missing reference {{baseDir}}/{}".format(skill_id, relative)
             )
 
-    for markdown in sorted(package.glob("**/*.md")):
+    markdown_paths = (
+        package / "SKILL.md",
+        package / "references" / "api-reference.md",
+        package / "references" / "endpoints.md",
+    )
+    for markdown in markdown_paths:
         for line in markdown.read_text(encoding="utf-8").splitlines():
             if line.startswith("python3 ") and not line.startswith(
                 "python3 {baseDir}/scripts/nango_proxy.py "
@@ -206,21 +254,41 @@ def validate():
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return ["catalog: {}".format(exc)], 0
 
+    rendered_catalog = ROOT / "CATALOG.md"
+    if rendered_catalog.is_symlink() or not rendered_catalog.is_file():
+        errors.append("CATALOG.md must be a regular file")
+    elif stat.S_IMODE(rendered_catalog.stat().st_mode) != CATALOG_FILE_MODE:
+        errors.append(
+            "non-canonical mode CATALOG.md (expected {:04o})".format(
+                CATALOG_FILE_MODE
+            )
+        )
+
     skills_root = ROOT / "skills"
+    if skills_root.is_symlink() or not skills_root.is_dir():
+        errors.append("skills must be a regular directory")
+        return errors, len(entries)
+
     expected_dirs = {entry["id"] for entry in entries}
-    if skills_root.is_dir():
-        actual_dirs = {
-            path.name for path in skills_root.iterdir() if path.is_dir()
-        }
-    else:
-        actual_dirs = set()
-    for skill_id in sorted(expected_dirs - actual_dirs):
-        errors.append("missing skill directory: {}".format(skill_id))
-    for skill_id in sorted(actual_dirs - expected_dirs):
-        errors.append("unexpected skill directory: {}".format(skill_id))
+    root_paths = {path.name: path for path in skills_root.iterdir()}
+    valid_skill_dirs = set()
+    for skill_id in sorted(expected_dirs):
+        path = root_paths.get(skill_id)
+        if path is None:
+            errors.append("missing skill directory: {}".format(skill_id))
+        elif path.is_symlink() or not path.is_dir():
+            errors.append(
+                "skill root path must be a regular directory: {}".format(
+                    skill_id
+                )
+            )
+        else:
+            valid_skill_dirs.add(skill_id)
+    for name in sorted(set(root_paths) - expected_dirs):
+        errors.append("unexpected skill root path: {}".format(name))
 
     for entry in entries:
-        if entry["id"] in actual_dirs:
+        if entry["id"] in valid_skill_dirs:
             _validate_package(entry, errors)
     return errors, len(entries)
 
