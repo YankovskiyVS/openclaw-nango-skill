@@ -1,0 +1,1199 @@
+{
+  "schema_version": 1,
+  "skills": [
+    {
+      "id": "yandex-id",
+      "name": "yandex-id",
+      "title": "Yandex ID",
+      "family": "yandex",
+      "provider_config_key": "yandex-id",
+      "aliases": [
+        "yandex"
+      ],
+      "description": "Call Yandex ID (login.info/email/avatar) via Nango proxy after OAuth connect",
+      "when": "User asks about Yandex profile, login, email, avatar, or account identity.",
+      "scopes": "login:info, login:email, login:avatar",
+      "base": "https://login.yandex.ru",
+      "notes": "Legacy Nango unique key `yandex` still works if that is what was connected.",
+      "operations": [
+        {
+          "title": "GET profile",
+          "command": "call yandex-id info --query 'format=json' --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "GET",
+          "path": "info",
+          "query": [
+            {
+              "name": "format",
+              "value": "json"
+            }
+          ],
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed profile response.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "legacy key",
+          "command": "call yandex info --query 'format=json' --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "provider_config_key": "yandex",
+          "method": "GET",
+          "path": "info",
+          "query": [
+            {
+              "name": "format",
+              "value": "json"
+            }
+          ],
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed profile response for the explicitly selected legacy connection key.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "yandex-disk",
+      "name": "yandex-disk",
+      "title": "Yandex Disk",
+      "family": "yandex",
+      "provider_config_key": "yandex-disk",
+      "description": "Call Yandex Disk REST API via Nango proxy after OAuth connect",
+      "when": "User asks to list/upload/download files on Yandex Disk.",
+      "scopes": "cloud_api:disk.read, cloud_api:disk.write, cloud_api:disk.info, cloud_api:disk.app_folder",
+      "base": "https://cloud-api.yandex.net",
+      "notes": "Docs: https://yandex.com/dev/disk/api/concepts/about.html",
+      "operations": [
+        {
+          "title": "Disk meta",
+          "command": "call yandex-disk v1/disk --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "GET",
+          "path": "v1/disk",
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed disk metadata response.",
+          "docs": {
+            "status": "verified",
+            "url": "https://yandex.com/dev/disk/api/concepts/about.html"
+          }
+        },
+        {
+          "title": "List root",
+          "command": "call yandex-disk 'v1/disk/resources' --query 'path=/' --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "v1/disk/resources",
+          "query": [
+            {
+              "name": "path",
+              "value": "/"
+            }
+          ],
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded resource pages and the pagination termination reason.",
+          "docs": {
+            "status": "verified",
+            "url": "https://yandex.com/dev/disk/api/concepts/about.html"
+          }
+        },
+        {
+          "title": "Upload file",
+          "availability": "template",
+          "tool": "nango_disk_transfer",
+          "method": null,
+          "path": null,
+          "transfer": {
+            "direction": "upload",
+            "localPath": "/REPLACE_WITH_CONFIGURED_UPLOAD_ROOT/report.csv",
+            "remotePath": "disk:/report.csv",
+            "overwrite": false
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "After transfer success, read v1/disk/resources for disk:/report.csv and compare remote path and size; compare checksum only when the provider response includes one.",
+          "docs": {
+            "status": "verified",
+            "url": "https://yandex.com/dev/disk/api/concepts/about.html"
+          }
+        },
+        {
+          "title": "Download file",
+          "availability": "template",
+          "tool": "nango_disk_transfer",
+          "method": null,
+          "path": null,
+          "transfer": {
+            "direction": "download",
+            "localPath": "/REPLACE_WITH_CONFIGURED_DOWNLOAD_ROOT/report.csv",
+            "remotePath": "disk:/report.csv",
+            "overwrite": false
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "Require the confirmed transfer size and sha256, then verify the final local file inside the configured download root.",
+          "docs": {
+            "status": "verified",
+            "url": "https://yandex.com/dev/disk/api/concepts/about.html"
+          }
+        }
+      ]
+    },
+    {
+      "id": "yandex-mail",
+      "name": "yandex-mail",
+      "title": "Yandex Mail",
+      "family": "yandex",
+      "provider_config_key": "yandex-mail",
+      "description": "Use Yandex Mail OAuth token (IMAP/SMTP XOAUTH2) obtained via Nango",
+      "when": "User asks to read or send Yandex Mail.",
+      "scopes": "mail:imap_full, mail:smtp, login:email",
+      "base": "https://login.yandex.ru (identity); mail via IMAP/SMTP",
+      "notes": "The Python fallback resolves identity only. Mailbox reads and sends use registered Nango actions backed by the fixed IMAP/SMTP bridge; never expose the OAuth token.",
+      "operations": [
+        {
+          "title": "Resolve mailbox email",
+          "command": "call yandex-mail info --query 'format=json' --json-output",
+          "fallback_contract": {
+            "transport": "proxy_http",
+            "operation_kind": "read",
+            "provider_config_key": "yandex-mail",
+            "method": "GET",
+            "path": "info",
+            "query": [
+              {
+                "name": "format",
+                "value": "json"
+              }
+            ]
+          },
+          "availability": "ready",
+          "tool": "nango_action",
+          "method": null,
+          "path": null,
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed mailbox address from the registered action.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          },
+          "action_name": "resolve-mailbox",
+          "action_input": {}
+        },
+        {
+          "title": "List messages",
+          "availability": "ready",
+          "tool": "nango_action",
+          "method": null,
+          "path": null,
+          "action_name": "list-messages",
+          "action_input": {
+            "folder": "INBOX",
+            "limit": 25,
+            "unseenOnly": false
+          },
+          "pagination": {
+            "mode": "action-window",
+            "page_limit": 25,
+            "max_items": 500,
+            "continuation": "Use numeric nextCursor as beforeUid; stop on a non-positive or non-numeric cursor."
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded message metadata. Continue only with a numeric nextCursor converted to beforeUid, and report the caller-side item bound.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Get message",
+          "availability": "ready",
+          "tool": "nango_action",
+          "method": null,
+          "path": null,
+          "action_name": "get-message",
+          "action_input": {
+            "folder": "INBOX",
+            "uid": 12345
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed message for the requested folder and UID.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Send message with attachment",
+          "availability": "ready",
+          "tool": "nango_action",
+          "method": null,
+          "path": null,
+          "action_name": "send-message",
+          "action_input": {
+            "idempotencyKey": "mail-20260723-0001",
+            "to": [
+              "recipient@example.com"
+            ],
+            "subject": "Verification message",
+            "text": "Test message",
+            "attachments": [
+              {
+                "filename": "check.txt",
+                "contentType": "text/plain",
+                "contentBase64": "dGVzdAo="
+              }
+            ]
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "On confirmed success require mailbox and Message-ID. On unknown, keep the same idempotency key and do not retry until provider mailbox state is checked externally; current read actions cannot search exact Message-ID.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "yandex-calendar",
+      "name": "yandex-calendar",
+      "title": "Yandex Calendar",
+      "family": "yandex",
+      "provider_config_key": "yandex-calendar",
+      "description": "Call Yandex Calendar CalDAV API via Nango proxy after OAuth connect",
+      "when": "User asks about Yandex Calendar events, availability, or meetings.",
+      "scopes": "calendar:all",
+      "base": "https://caldav.yandex.ru",
+      "notes": "CalDAV (ICS), not Google Calendar JSON API.",
+      "operations": [
+        {
+          "title": "CalDAV root",
+          "command": "call yandex-calendar calendars/ --method PROPFIND --header 'Depth: 1' --header 'Content-Type: application/xml; charset=utf-8' --text '<?xml version=\"1.0\" encoding=\"utf-8\"?><d:propfind xmlns:d=\"DAV:\"><d:prop><d:displayname/></d:prop></d:propfind>' --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "PROPFIND",
+          "path": "calendars/",
+          "pagination": {
+            "mode": "single",
+            "max_pages": 1,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return one bounded raw-XML response and the byte/page termination reason. Do not treat maxItems as a calendar count or infer collection paths from undocumented shapes.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          },
+          "headers": {
+            "Depth": "1"
+          },
+          "text_body": "<?xml version=\"1.0\" encoding=\"utf-8\"?><d:propfind xmlns:d=\"DAV:\"><d:prop><d:displayname/></d:prop></d:propfind>",
+          "content_type": "application/xml; charset=utf-8"
+        },
+        {
+          "title": "Query events (replace documented CalDAV fields)",
+          "availability": "template",
+          "tool": "nango_proxy_paginate",
+          "method": "REPORT",
+          "path": "calendars/REPLACE_WITH_DISCOVERED_COLLECTION/",
+          "headers": {
+            "Depth": "REPLACE_WITH_DOCUMENTED_DEPTH"
+          },
+          "text_body": "REPLACE_WITH_DOCUMENTED_BOUNDED_CALDAV_REPORT_XML",
+          "content_type": "application/xml; charset=utf-8",
+          "pagination": {
+            "mode": "single",
+            "max_pages": 1,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Before execution replace the collection, Depth, and XML with documented values including a bounded time range. Return one raw-XML response; maxItems does not count events.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Create event resource (replace documented CalDAV fields)",
+          "availability": "template",
+          "tool": "nango_proxy_request",
+          "method": "PUT",
+          "path": "calendars/REPLACE_WITH_DISCOVERED_COLLECTION/REPLACE_WITH_EVENT_NAME.ics",
+          "text_body": "REPLACE_WITH_COMPLETE_VCALENDAR_ICS",
+          "content_type": "text/calendar; charset=utf-8",
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "After success or unknown, GET the same event path and compare the body and safe ETag. Without an ETag, report verification as incomplete.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "yandex-direct",
+      "name": "yandex-direct",
+      "title": "Yandex Direct",
+      "family": "yandex",
+      "provider_config_key": "yandex-direct",
+      "description": "Call Yandex Direct API via Nango proxy after OAuth connect",
+      "when": "User asks about Yandex Direct campaigns, ads, or reports.",
+      "scopes": "direct:api",
+      "base": "https://api.direct.yandex.com",
+      "notes": "Nango injects the provider credential. The caller must not supply or override auth and Nango control headers. After a confirmed Direct mutation, read the campaign and compare intended fields; after an uncertain dispatch, inspect campaign state before retrying.",
+      "operations": [
+        {
+          "title": "JSON v5 campaigns",
+          "command": "call yandex-direct json/v5/campaigns --method POST --json '{\"method\":\"get\",\"params\":{\"SelectionCriteria\":{},\"FieldNames\":[\"Id\",\"Name\"],\"Page\":{\"Limit\":100,\"Offset\":0}}}' --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "POST",
+          "path": "json/v5/campaigns",
+          "json_body": {
+            "method": "get",
+            "params": {
+              "SelectionCriteria": {},
+              "FieldNames": [
+                "Id",
+                "Name"
+              ],
+              "Page": {
+                "Limit": 100,
+                "Offset": 0
+              }
+            }
+          },
+          "pagination": {
+            "mode": "body-offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Advance Page.Offset within configured bounds and return the terminal page and termination reason.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Update campaign (replace provider-documented payload)",
+          "availability": "template",
+          "tool": "nango_proxy_request",
+          "method": "POST",
+          "path": "json/v5/campaigns",
+          "json_body": {
+            "method": "update",
+            "params": "REPLACE_WITH_PROVIDER_DOCUMENTED_CAMPAIGN_UPDATE_PAYLOAD"
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "After confirmed success read the campaign and compare intended fields. After unknown, inspect campaign state before any retry.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "yandex-maps",
+      "name": "yandex-maps",
+      "title": "Yandex Maps",
+      "family": "yandex",
+      "provider_config_key": "yandex-maps",
+      "description": "Call Yandex Maps (bookmarks scope) via Nango proxy after OAuth connect",
+      "when": "User asks about Yandex Maps bookmarks / saved places (msps:public_bookmarks).",
+      "scopes": "msps:public_bookmarks",
+      "base": "No verified public bookmarks REST base",
+      "notes": "No public bookmarks route is confirmed. Keep generic HTTP capability available for an operator-supplied documented product endpoint, but never invent a path or schema.",
+      "operations": [
+        {
+          "title": "Legacy placeholder — do not execute without a documented path",
+          "availability": "unsupported",
+          "tool": null,
+          "method": null,
+          "path": null,
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "unsupported",
+          "verification": "Do not invent a host, path, schema, or pagination contract; report that no supported public-bookmarks route is confirmed.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "yandex-market",
+      "name": "yandex-market",
+      "title": "Yandex Market Partner",
+      "family": "yandex",
+      "provider_config_key": "yandex-market",
+      "description": "Call Yandex Market Partner API via Nango proxy after OAuth connect",
+      "when": "User asks about Market partner campaigns, offers, or partner cabinet data.",
+      "scopes": "market:partner-api",
+      "base": "https://api.partner.market.yandex.ru",
+      "notes": "Authentication behavior depends on the configured Nango provider and has not been live-verified by this repository.",
+      "operations": [
+        {
+          "title": "Campaigns v2",
+          "command": "call yandex-market v2/campaigns --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "v2/campaigns",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded campaign pages and the pagination termination reason; do not claim the provider authentication was live-tested.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "yandex-delivery",
+      "name": "yandex-delivery",
+      "title": "Yandex Delivery Partner",
+      "family": "yandex",
+      "provider_config_key": "yandex-delivery",
+      "description": "Call Yandex Delivery Partner API via Nango proxy after OAuth connect",
+      "when": "User asks about Yandex Delivery offers, claims, or partner logistics API.",
+      "scopes": "delivery:partner-api",
+      "base": "https://b2b.taxi.yandex.net",
+      "notes": "The create route requires the exact matching Delivery product schema. Never send an empty create body as a connectivity test.",
+      "operations": [
+        {
+          "title": "Legacy create shape — do not execute without real required fields",
+          "availability": "blocked_contract",
+          "tool": null,
+          "method": "POST",
+          "path": "api/b2b/platform/offers/create",
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "unsupported",
+          "verification": "Do not execute until the exact product body schema, created-entity read path, and unknown-outcome reconciliation route are verified.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "bitrix24",
+      "name": "bitrix24",
+      "title": "Bitrix24",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24",
+      "description": "Call Bitrix24 REST (base user scope) via Nango proxy after OAuth connect",
+      "when": "User asks generic Bitrix24 requests; prefer module skills (crm/tasks/…) when available.",
+      "scopes": "user",
+      "base": "https://{domain}/rest",
+      "notes": "Connect requires Bitrix24 portal domain. Install module-specific skills when those integrations are connected.",
+      "operations": [
+        {
+          "title": "Current user",
+          "command": "call bitrix24 user.current --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "GET",
+          "path": "user.current",
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed current-user response.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-crm",
+      "name": "bitrix24-crm",
+      "title": "Bitrix24 CRM",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-crm",
+      "description": "Call Bitrix24 CRM REST (leads, deals, contacts) via Nango proxy",
+      "when": "User asks about Bitrix24 leads, deals, contacts, companies, invoices, SPA.",
+      "scopes": "crm",
+      "base": "https://{domain}/rest",
+      "notes": "Requires OAuth connection for provider_config_key bitrix24-crm. Primary deal updates use nango_proxy_request with crm.deal.update; after confirmed success, read the deal with crm.deal.get, and after an uncertain dispatch inspect it before retrying.",
+      "operations": [
+        {
+          "title": "List leads",
+          "command": "call bitrix24-crm crm.lead.list --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "crm.lead.list",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "List deals",
+          "command": "call bitrix24-crm crm.deal.list --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "crm.deal.list",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Update deal",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "POST",
+          "path": "crm.deal.update",
+          "json_body": {
+            "id": 123,
+            "fields": {
+              "TITLE": "Updated deal title"
+            }
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "After confirmed success read the deal through crm.deal.get and compare intended fields. After unknown, inspect the same deal before any retry.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-tasks",
+      "name": "bitrix24-tasks",
+      "title": "Bitrix24 Tasks",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-tasks",
+      "description": "Call Bitrix24 Tasks / Projects REST via Nango proxy",
+      "when": "User asks about Bitrix24 tasks, checklists, comments, projects/groups.",
+      "scopes": "task, tasks_extended, sonet_group",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "List tasks",
+          "command": "call bitrix24-tasks tasks.task.list --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "tasks.task.list",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-disk",
+      "name": "bitrix24-disk",
+      "title": "Bitrix24 Disk",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-disk",
+      "description": "Call Bitrix24 Disk REST via Nango proxy",
+      "when": "User asks about Bitrix24 Drive files, folders, public links.",
+      "scopes": "disk",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Storage list",
+          "command": "call bitrix24-disk disk.storage.getlist --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "disk.storage.getlist",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-im",
+      "name": "bitrix24-im",
+      "title": "Bitrix24 Messenger",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-im",
+      "description": "Call Bitrix24 Messenger / chatbots / open lines via Nango proxy",
+      "when": "User asks to send Bitrix24 chat messages, manage chatbots, or open lines.",
+      "scopes": "im, imbot, imopenlines",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Recent dialogs",
+          "command": "call bitrix24-im im.recent.get --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "im.recent.get",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-user",
+      "name": "bitrix24-user",
+      "title": "Bitrix24 Users & Structure",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-user",
+      "description": "Call Bitrix24 user and company structure REST via Nango proxy",
+      "when": "User asks about Bitrix24 employees, departments, org chart.",
+      "scopes": "user, department",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Current user",
+          "command": "call bitrix24-user user.current --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "GET",
+          "path": "user.current",
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed current-user response.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Departments",
+          "command": "call bitrix24-user department.get --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "department.get",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-calendar",
+      "name": "bitrix24-calendar",
+      "title": "Bitrix24 Calendar",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-calendar",
+      "description": "Call Bitrix24 Calendar REST via Nango proxy",
+      "when": "User asks about Bitrix24 calendar, meetings, room booking.",
+      "scopes": "calendar",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Section list",
+          "command": "call bitrix24-calendar calendar.section.get --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "calendar.section.get",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-bizproc",
+      "name": "bitrix24-bizproc",
+      "title": "Bitrix24 Business Processes",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-bizproc",
+      "description": "Call Bitrix24 business processes / robots REST via Nango proxy",
+      "when": "User asks to start or inspect Bitrix24 workflows, robots, or bizproc.",
+      "scopes": "bizproc",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Workflow templates",
+          "command": "call bitrix24-bizproc bizproc.workflow.template.list --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "bizproc.workflow.template.list",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-telephony",
+      "name": "bitrix24-telephony",
+      "title": "Bitrix24 Telephony",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-telephony",
+      "description": "Call Bitrix24 telephony / call-tracking REST via Nango proxy",
+      "when": "User asks about Bitrix24 calls, call records, or telephony.",
+      "scopes": "telephony, call",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "External lines",
+          "command": "call bitrix24-telephony telephony.externalLine.get --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "telephony.externalLine.get",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "amocrm",
+      "name": "amocrm",
+      "title": "amoCRM",
+      "family": "amocrm",
+      "provider_config_key": "amocrm",
+      "description": "Call amoCRM REST via Nango proxy after OAuth connect",
+      "when": "User asks generic amoCRM questions; prefer module skills when installed.",
+      "scopes": "account data (coarse OAuth scopes in amoМаркет)",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "amoCRM OAuth scopes are coarse; module skills are separate apps for UX/isolation.",
+      "operations": [
+        {
+          "title": "Account",
+          "command": "call amocrm api/v4/account --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "GET",
+          "path": "api/v4/account",
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed account response.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "amocrm-crm",
+      "name": "amocrm-crm",
+      "title": "amoCRM Deals & Pipeline",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-crm",
+      "description": "Call amoCRM deals/contacts/pipelines via Nango proxy",
+      "when": "User asks about amoCRM deals, contacts, companies, pipelines, stages.",
+      "scopes": "account data (selected in amoМаркет)",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Leads",
+          "command": "call amocrm-crm api/v4/leads --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/leads",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Contacts",
+          "command": "call amocrm-crm api/v4/contacts --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/contacts",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "amocrm-catalog",
+      "name": "amocrm-catalog",
+      "title": "amoCRM Catalog & Purchases",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-catalog",
+      "description": "Call amoCRM catalog/products/purchases via Nango proxy",
+      "when": "User asks about amoCRM products, catalogs, purchases.",
+      "scopes": "account data",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Catalogs",
+          "command": "call amocrm-catalog api/v4/catalogs --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/catalogs",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "amocrm-chats",
+      "name": "amocrm-chats",
+      "title": "amoCRM Chats",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-chats",
+      "description": "Call amoCRM chats / messaging integrations via Nango proxy",
+      "when": "User asks about amoCRM chats, messengers, inbound channels.",
+      "scopes": "account data",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "Read Talks through `api/v4/talks`. Send outbound messages through the registered `nango_action` `send-message` action with `providerConfigKey` `amocrm-chats`; confirm the returned message id and inspect chat state before retrying an unknown outcome.",
+      "operations": [
+        {
+          "title": "Talks",
+          "command": "call amocrm-chats api/v4/talks --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/talks",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Send message",
+          "availability": "ready",
+          "tool": "nango_action",
+          "method": null,
+          "path": null,
+          "action_name": "send-message",
+          "action_input": {
+            "msgid": "example-msg-20260723-0001",
+            "conversationId": "example-conversation-001",
+            "receiver": {
+              "id": "example-receiver-001",
+              "name": "Example receiver"
+            },
+            "text": "Hello",
+            "silent": false
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "On confirmed success require result.refId to equal the input msgid and retain the provider msgid. On unknown, do not retry blindly: the registered talks read cannot prove delivery of the exact message.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "amocrm-telephony",
+      "name": "amocrm-telephony",
+      "title": "amoCRM Telephony",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-telephony",
+      "description": "Call amoCRM telephony / call events via Nango proxy",
+      "when": "User asks about amoCRM calls, telephony, call records.",
+      "scopes": "account data",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Events notes",
+          "command": "call amocrm-telephony api/v4/events --query 'filter[type]=incoming_call' --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/events",
+          "query": [
+            {
+              "name": "filter[type]",
+              "value": "incoming_call"
+            }
+          ],
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "amocrm-tasks",
+      "name": "amocrm-tasks",
+      "title": "amoCRM Tasks & Calendar",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-tasks",
+      "description": "Call amoCRM tasks via Nango proxy",
+      "when": "User asks about amoCRM tasks, reminders, calendar-like follow-ups.",
+      "scopes": "account data",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Tasks",
+          "command": "call amocrm-tasks api/v4/tasks --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/tasks",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "amocrm-events",
+      "name": "amocrm-events",
+      "title": "amoCRM Events & Feed",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-events",
+      "description": "Call amoCRM events / activity feed via Nango proxy",
+      "when": "User asks about amoCRM activity history, notes, change feed.",
+      "scopes": "account data",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Events",
+          "command": "call amocrm-events api/v4/events --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/events",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "amocrm-users",
+      "name": "amocrm-users",
+      "title": "amoCRM Users & Structure",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-users",
+      "description": "Call amoCRM users / account structure via Nango proxy",
+      "when": "User asks about amoCRM managers, groups, account users.",
+      "scopes": "account data",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Users",
+          "command": "call amocrm-users api/v4/users --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/users",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        }
+      ]
+    }
+  ]
+}

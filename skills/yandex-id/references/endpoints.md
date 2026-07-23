@@ -6,18 +6,68 @@
 - **Scopes:** login:info, login:email, login:avatar
 - **Upstream base:** `https://login.yandex.ru`
 
-## Examples
+## Operations
 
 ### GET profile
 
-```bash
-python3 scripts/nango_proxy.py call yandex-id info --query 'format=json' --json-output
+- **Operation name:** `GET profile`
+- **Availability:** `ready`
+- **Method:** `GET`
+- **Path:** `info`
+- **Request shape:** method and relative path, ordered `query` name/value pairs; see the exact typed arguments below.
+- **Pagination:** None — one bounded tool call.
+- **Mutability:** `read` — no mutation approval.
+- **Verification:** Return only the confirmed profile response.
+- **Authoritative docs:** `not_verified` — no authoritative documentation URL is recorded for this operation.
+
+#### Typed tool call
+
+```json
+{
+  "tool": "nango_proxy_request",
+  "arguments": {
+    "providerConfigKey": "yandex-id",
+    "method": "GET",
+    "path": "info",
+    "query": [
+      {
+        "name": "format",
+        "value": "json"
+      }
+    ]
+  }
+}
 ```
 
 ### legacy key
 
-```bash
-python3 scripts/nango_proxy.py call yandex info --query 'format=json' --json-output
+- **Operation name:** `legacy key`
+- **Availability:** `ready`
+- **Method:** `GET`
+- **Path:** `info`
+- **Request shape:** method and relative path, ordered `query` name/value pairs; see the exact typed arguments below.
+- **Pagination:** None — one bounded tool call.
+- **Mutability:** `read` — no mutation approval.
+- **Verification:** Return only the confirmed profile response for the explicitly selected legacy connection key.
+- **Authoritative docs:** `not_verified` — no authoritative documentation URL is recorded for this operation.
+
+#### Typed tool call
+
+```json
+{
+  "tool": "nango_proxy_request",
+  "arguments": {
+    "providerConfigKey": "yandex",
+    "method": "GET",
+    "path": "info",
+    "query": [
+      {
+        "name": "format",
+        "value": "json"
+      }
+    ]
+  }
+}
 ```
 
 ## Notes

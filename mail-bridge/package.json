@@ -1,0 +1,30 @@
+{
+  "name": "openclaw-yandex-mail-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:redis": "node -e \"if (!process.env.MAIL_BRIDGE_TEST_REDIS_URL) throw new Error('MAIL_BRIDGE_TEST_REDIS_URL is required')\" && vitest run test/redis.integration.test.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/src/server.js"
+  },
+  "dependencies": {
+    "imapflow": "1.5.0",
+    "mailparser": "3.9.14",
+    "nodemailer": "9.0.3",
+    "redis": "6.1.0",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/mailparser": "3.4.6",
+    "@types/node": "24.10.1",
+    "@types/nodemailer": "7.0.4",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

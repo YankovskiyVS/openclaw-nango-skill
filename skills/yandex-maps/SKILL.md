@@ -1,84 +1,47 @@
 ---
 name: yandex-maps
-description: Call Yandex Maps (bookmarks scope) via Nango proxy after OAuth connect
-timeout_sec: 300
-required_pip:
-  - httpx
-required_env:
-  - NANGO_PROXY_URL
-  - EVOLUTION_PROJECT_ID
-  - EVOCLAW_ID
-  - CLOUDRU_API_KEY
-allowed-tools: Fetch HTTP
-metadata:
-  openclaw:
-    requires:
-      env:
-        - NANGO_PROXY_URL
-        - EVOLUTION_PROJECT_ID
-        - EVOCLAW_ID
-        - CLOUDRU_API_KEY
-    primaryEnv: CLOUDRU_API_KEY
-  nango:
-    family: yandex
-    provider_config_key: yandex-maps
+description: "Yandex Maps tasks: Yandex Maps bookmarks / saved places (msps:public_bookmarks)."
+metadata: {"openclaw":{},"nango":{"family":"yandex","provider_config_key":"yandex-maps"}}
 ---
 
-> **Required env:** `NANGO_PROXY_URL`, `EVOLUTION_PROJECT_ID`, `EVOCLAW_ID`, `CLOUDRU_API_KEY`  
-> **Required pip:** `httpx`  
-> **Install only if** this EvoClaw has OAuth connection for `yandex-maps` in Cloud.ru console.
+# Yandex Maps
 
+Use this skill when the user requests Yandex Maps bookmarks / saved places (msps:public_bookmarks) through the configured Nango connection.
 
-## What this skill does
-
-**Yandex Maps** — authenticated HTTP via **ai-assistant-nango-proxy** → Nango → provider API.
-
-- Nango `provider_config_key`: **`yandex-maps`**
+- Route only to `providerConfigKey`: **`yandex-maps`**.
 - Scopes / access: `msps:public_bookmarks`
-- Upstream base (via Nango): `https://api-maps.yandex.ru`
+- Upstream base (via Nango): `No verified public bookmarks REST base`
 
-OpenClaw never sees OAuth tokens or the Nango secret.
+## Workflow
 
-## When to use
+1. Use the exact provider key above; never route by a similar vendor name.
+2. Use `nango_proxy_request` for one provider request and `nango_proxy_paginate` only for a registered bounded read contract.
+3. Use `nango_action` only for a registered action and `nango_disk_transfer` only for Yandex Disk file transfer.
+4. Reads run without a prompt. Every semantic mutation requires one-time approval tied to the exact tool call and parameters.
+5. Treat `confirmed` as completed, `not_started` as safe to fix and retry, and `confirmed_failed` as a provider-confirmed failure. For `unknown`, inspect provider state and do not retry blindly.
+6. Do not infer the failing layer from HTTP status alone. Return the tool's safe error code and outcome; never expose credentials.
 
-User asks about Yandex Maps bookmarks / saved places (msps:public_bookmarks).
+Do not use the Python fallback to bypass approval.
 
-Do **not** use for other vendors — install the matching skill (`yandex-*`, `bitrix24-*`, `amocrm-*`).
+## Typed tools
 
-## Prerequisites
+### Unsupported endpoint boundary
 
-1. User completed OAuth for **`yandex-maps`** on this EvoClaw in Cloud.ru console.
-2. Env injected (operator / pod): `NANGO_PROXY_URL`, `EVOLUTION_PROJECT_ID`, `EVOCLAW_ID`, `CLOUDRU_API_KEY`.
-3. `pip install httpx` once per session if needed.
+No public bookmarks endpoint is confirmed for the declared scope. Do not invent `v1/`, a host, or a response schema. Do not call `nango_proxy_request` until the operator supplies a documented endpoint for the connected Maps product; otherwise report the capability as unsupported.
 
-Connection end-user id:
+Request inputs are strict: relative `path`, ordered `query` pairs, bounded headers/body, and no caller-supplied auth, raw Nango control headers, approval proof, or operation classification fields.
 
-```text
-project-{EVOLUTION_PROJECT_ID}-evoclaw-{EVOCLAW_ID}
-```
+## Operator-only fallback
 
-## CLI
+Keep this compatibility path for diagnostics or deployments where the plugin is unavailable. It requires `NANGO_PROXY_URL`, `EVOLUTION_PROJECT_ID`, `EVOCLAW_ID`, `CLOUDRU_API_KEY`, Python 3, and `httpx`. An operator must explicitly choose it. Mutations still need approval and post-write verification.
 
-```bash
-# After OAuth, call Maps endpoints as documented for bookmarks API
-python3 {baseDir}/scripts/nango_proxy.py call yandex-maps v1/ --json-output
-```
+No catalog fallback command is published for this unavailable product contract. The generic client remains packaged for an operator-supplied documented path.
 
-Flags: `--method`, `--json`, `--body-file`, `--query`, `--header`, `--timeout`, `--project-id`, `--evoclaw-id`, `--api-key`, `--proxy-url`, `--json-output`.
-
-## Agent workflow
-
-1. Confirm the request matches **Yandex Maps** (`yandex-maps`).
-2. Prefer `python3 {baseDir}/scripts/nango_proxy.py call yandex-maps …`.
-3. On **401** — API key / IAM; do not invent alternate auth.
-4. On **404** — wrong `EVOCLAW_ID`.
-5. On upstream **4xx/5xx** — missing/expired OAuth → ask user to reconnect **yandex-maps** in console.
-6. Never log `CLOUDRU_API_KEY` or tokens.
+The fallback preserves the full generic HTTP flags documented in `{baseDir}/references/api-reference.md`.
 
 ## Notes
 
-Exact bookmark REST paths depend on Maps product API; keep OAuth connection scoped to bookmarks.
-
+No public bookmarks route is confirmed. Keep generic HTTP capability available for an operator-supplied documented product endpoint, but never invent a path or schema.
 
 ## References
 

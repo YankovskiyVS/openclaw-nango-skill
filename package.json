@@ -1,0 +1,11 @@
+{
+  "name": "openclaw-nango-tools-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "openclaw-plugin"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}
