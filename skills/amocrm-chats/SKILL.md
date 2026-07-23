@@ -49,12 +49,14 @@ Use `nango_proxy_paginate` for read-only `api/v4/talks`. Use `nango_action` with
   "providerConfigKey": "amocrm-chats",
   "actionName": "send-message",
   "input": {
+    "msgid": "<stable-unique-message-id>",
     "conversationId": "<confirmed-conversation-id>",
-    "message": {
-      "type": "text",
-      "text": "Hello"
+    "receiver": {
+      "id": "<confirmed-receiver-id>",
+      "name": "<receiver-display-name>"
     },
-    "idempotencyKey": "<stable-key>"
+    "text": "Hello",
+    "silent": false
   }
 }
 ```

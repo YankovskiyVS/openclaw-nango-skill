@@ -330,9 +330,14 @@ def _special_guidance(entry):
                     "providerConfigKey": "amocrm-chats",
                     "actionName": "send-message",
                     "input": {
+                        "msgid": "<stable-unique-message-id>",
                         "conversationId": "<confirmed-conversation-id>",
-                        "message": {"type": "text", "text": "Hello"},
-                        "idempotencyKey": "<stable-key>",
+                        "receiver": {
+                            "id": "<confirmed-receiver-id>",
+                            "name": "<receiver-display-name>",
+                        },
+                        "text": "Hello",
+                        "silent": False,
                     },
                 }
             ),
