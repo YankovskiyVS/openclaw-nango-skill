@@ -80,15 +80,9 @@ describe('Nango action identity and compiler-safe imports', () => {
     it('side-effect imports every action with directory/basename identity', async () => {
         const index = await readFile(resolve(HERE, '../index.ts'), 'utf8');
 
-        expect(index).toBe(
-            [
-                "import './yandex-mail/actions/resolve-mailbox.js';",
-                "import './yandex-mail/actions/list-messages.js';",
-                "import './yandex-mail/actions/get-message.js';",
-                "import './yandex-mail/actions/send-message.js';",
-                ''
-            ].join('\n')
-        );
+        for (const actionName of ['resolve-mailbox', 'list-messages', 'get-message', 'send-message']) {
+            expect(index.match(new RegExp(`yandex-mail/actions/${actionName}\\.js`, 'g'))).toHaveLength(1);
+        }
         expect(resolveMailboxAction.type).toBe('action');
         expect(listMessagesAction.type).toBe('action');
         expect(getMessageAction.type).toBe('action');
@@ -404,6 +398,33 @@ describe('bridge signing and fixed transport', () => {
 
         expect(result).toMatchObject({ ok: false, outcome: 'unknown', error: { code: 'mail_bridge_outcome_unknown' } });
         expect(JSON.stringify(result)).not.toContain(SECRET);
+    });
+
+    it('never upgrades a success-shaped Axios 500 response to confirmed', async () => {
+        const nango = nangoMock({
+            postError: {
+                response: {
+                    status: 500,
+                    data: {
+                        ok: true,
+                        outcome: 'confirmed',
+                        result: {
+                            mailbox: MAILBOX,
+                            messageId: '<must-not-be-trusted@example.com>'
+                        }
+                    }
+                }
+            }
+        });
+
+        const result = await sendMessageAction.exec(nango as never, {
+            idempotencyKey: 'send-12345678',
+            to: ['recipient@example.com'],
+            subject: 'hello',
+            text: 'body'
+        });
+
+        expect(result).toMatchObject({ ok: false, outcome: 'unknown', error: { code: 'mail_bridge_outcome_unknown' } });
     });
 
     it('uses confirmed_failed after a read bridge dispatch fails', async () => {

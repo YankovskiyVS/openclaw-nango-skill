@@ -403,9 +403,15 @@ export async function callMailBridge<T extends z.ZodTypeAny>(input: {
             false
         );
     } catch (error) {
-        if (isRecord(error) && isRecord(error.response)) {
+        if (
+            isRecord(error) &&
+            isRecord(error.response) &&
+            Number.isInteger(error.response.status) &&
+            (error.response.status as number) >= 400 &&
+            (error.response.status as number) <= 599
+        ) {
             const parsed = input.output.safeParse(error.response.data);
-            if (parsed.success) {
+            if (parsed.success && isRecord(parsed.data) && parsed.data.ok === false) {
                 return parsed.data;
             }
         }

@@ -12,5 +12,5 @@
     "noEmit": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["index.ts", "yandex-mail/**/*.ts", "test/**/*.ts"]
+  "include": ["index.ts", "yandex-mail/**/*.ts", "amocrm-chats-channel/**/*.ts", "test/**/*.ts"]
 }
