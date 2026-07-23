@@ -1555,3 +1555,36 @@ def test_final_json_envelope_is_bounded_after_serialization(
     assert len(output.encode("utf-8")) <= 512
     assert "x" * 100 not in output
     assert envelope["response"]["body"]["truncated"] is True
+
+
+def test_json_envelope_exact_boundary_does_not_add_newline(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exact_caps: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        response = httpx.Response(200, json={"ok": True}, request=request)
+        envelope = {
+            "ok": True,
+            "request": {
+                "providerConfigKey": "amocrm-crm",
+                "method": "GET",
+                "path": "api/v4/leads",
+            },
+            "response": nango_proxy._response_payload(response),
+            "outcome": "confirmed",
+        }
+        exact_cap = len(nango_proxy._dump_json(envelope).encode("utf-8"))
+        monkeypatch.setattr(nango_proxy, "MAX_JSON_OUTPUT_BYTES", exact_cap)
+        exact_caps.append(exact_cap)
+        return response
+
+    _install_mock_transport(monkeypatch, handler)
+    _set_call_environment(monkeypatch)
+
+    assert nango_proxy.cmd_call(_parse_call_args("--json-output")) == 0
+
+    output = capsys.readouterr().out
+    assert len(output.encode("utf-8")) == exact_caps[0]
+    assert json.loads(output)["response"]["body"] == {"ok": True}

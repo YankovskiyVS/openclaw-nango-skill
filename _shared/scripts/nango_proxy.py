@@ -816,7 +816,13 @@ def cmd_call(args: argparse.Namespace) -> int:
             "response": response_payload,
             "outcome": "confirmed",
         }
-        print(_bounded_success_json(envelope, response))
+        serialized = _bounded_success_json(envelope, response)
+        terminator = (
+            "\n"
+            if len(serialized.encode("utf-8")) < MAX_JSON_OUTPUT_BYTES
+            else ""
+        )
+        sys.stdout.write(f"{serialized}{terminator}")
     else:
         _emit_plain_response(response.status_code, response_payload["body"])
 
