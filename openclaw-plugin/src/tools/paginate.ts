@@ -22,7 +22,6 @@ import {
   type FailureResult,
   type JsonValue,
   type RequestSummary,
-  type ResponseSummary,
   type SuccessResult,
   type ToolResult,
 } from "../result.js";
@@ -1090,12 +1089,6 @@ function requestFingerprint(request: ProxyRequest): string {
   return hash.digest("hex");
 }
 
-function pageFingerprint(response: ResponseSummary): string {
-  return createHash("sha256")
-    .update(JSON.stringify(response.body), "utf8")
-    .digest("hex");
-}
-
 function paginationSuccess(
   firstRequest: ProxyRequest,
   mode: PaginationMode,
@@ -1138,7 +1131,6 @@ async function executePagination(
   const pages: PaginationPage[] = [];
   const items: JsonValue[] = [];
   const seenTargets = new Set<string>();
-  const seenPages = new Set<string>();
   const firstRequest = parsed.request;
   let request = parsed.request;
   const outputLimit = Math.min(
@@ -1208,17 +1200,6 @@ async function executePagination(
       );
     }
 
-    const fingerprint = pageFingerprint(result.response);
-    if (seenPages.has(fingerprint)) {
-      return paginationSuccess(
-        firstRequest,
-        parsed.mode,
-        pages,
-        items,
-        "loop_detected",
-      );
-    }
-    seenPages.add(fingerprint);
     const page = Object.freeze({
       request: result.request,
       response: Object.freeze({

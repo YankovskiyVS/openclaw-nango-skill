@@ -412,15 +412,14 @@ describe("nango_proxy_paginate public contract", () => {
     expect(requests).toHaveLength(1);
   });
 
-  test("detects a repeated page fingerprint while cursors advance", async () => {
+  test("keeps identical page bodies fetched from different targets", async () => {
     const { client, requests } = sequenceClient((request, index) =>
       success(
         request,
         { _embedded: { leads: [{ id: 1 }] } },
-        {
-          link:
-            `</api/v4/leads?page=${index + 2}>; rel=next`,
-        },
+        index === 0
+          ? { link: "</api/v4/leads?page=2>; rel=next" }
+          : {},
       ),
     );
     const tool = createPaginateTool({
@@ -430,16 +429,16 @@ describe("nango_proxy_paginate public contract", () => {
     });
 
     const result = await tool.execute(
-      "page-fingerprint-loop",
+      "identical-pages-different-targets",
       paginateParams(),
     );
 
     expect(result.details).toMatchObject({
       ok: true,
       pagination: {
-        pageCount: 1,
-        itemCount: 1,
-        termination: "loop_detected",
+        pageCount: 2,
+        itemCount: 2,
+        termination: "provider_end",
       },
     });
     expect(requests).toHaveLength(2);
