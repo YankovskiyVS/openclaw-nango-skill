@@ -8,7 +8,7 @@
 
 ## Examples
 
-### Platform probe
+### Legacy create shape — do not execute without real required fields
 
 ```bash
 python3 {baseDir}/scripts/nango_proxy.py call yandex-delivery api/b2b/platform/offers/create --method POST --json '{}' --json-output
@@ -16,4 +16,4 @@ python3 {baseDir}/scripts/nango_proxy.py call yandex-delivery api/b2b/platform/o
 
 ## Notes
 
-Upstream auth header is Bearer (set by Nango provider template).
+The create route requires the exact matching Delivery product schema. Never send an empty create body as a connectivity test.

@@ -4,11 +4,11 @@
 - **Nango provider_config_key:** `yandex-maps`
 - **Family:** `yandex`
 - **Scopes:** msps:public_bookmarks
-- **Upstream base:** `https://api-maps.yandex.ru`
+- **Upstream base:** `No verified public bookmarks REST base`
 
 ## Examples
 
-### After OAuth, call Maps endpoints as documented for bookmarks API
+### Legacy placeholder — do not execute without a documented path
 
 ```bash
 python3 {baseDir}/scripts/nango_proxy.py call yandex-maps v1/ --json-output
@@ -16,4 +16,4 @@ python3 {baseDir}/scripts/nango_proxy.py call yandex-maps v1/ --json-output
 
 ## Notes
 
-Exact bookmark REST paths depend on Maps product API; keep OAuth connection scoped to bookmarks.
+No public bookmarks route is confirmed. Keep generic HTTP capability available for an operator-supplied documented product endpoint, but never invent a path or schema.

@@ -16,4 +16,4 @@ python3 {baseDir}/scripts/nango_proxy.py call yandex-market v2/campaigns --json-
 
 ## Notes
 
-Market prefers Api-Key for new apps; OAuth still works for transitional setups.
+Authentication behavior depends on the configured Nango provider and has not been live-verified by this repository.

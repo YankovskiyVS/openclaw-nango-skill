@@ -14,13 +14,13 @@ from generate_skills import (
     CATALOG_FILE_MODE,
     GENERATED_PACKAGE_FILES,
     GENERATED_PACKAGE_MODES,
-    REQUIRED_ENV,
     ROOT,
+    _trigger_phrase,
     load_catalog,
 )
 
 
-SUPPORTED_FRONTMATTER = {"name", "description", "allowed-tools", "metadata"}
+SUPPORTED_FRONTMATTER = {"name", "description", "metadata"}
 JSON_ARGUMENT = re.compile(r"--json '([^']*)'")
 BASEDIR_REFERENCE = re.compile(r"`\{baseDir\}/([^`]+)`")
 
@@ -57,24 +57,29 @@ def _frontmatter(text, skill_id, errors):
 
 
 def _expected_frontmatter(entry):
+    metadata = json.dumps(
+        {
+            "openclaw": {},
+            "nango": {
+                "family": entry["family"],
+                "provider_config_key": entry["provider_config_key"],
+            },
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     return "\n".join(
         [
             "name: {}".format(entry["name"]),
             "description: {}".format(
-                json.dumps(entry["description"], ensure_ascii=False)
+                json.dumps(
+                    "{} tasks: {}.".format(
+                        entry["title"], _trigger_phrase(entry)
+                    ),
+                    ensure_ascii=False,
+                )
             ),
-            "allowed-tools: Fetch HTTP",
-            "metadata:",
-            "  openclaw:",
-            "    requires:",
-            "      env: [{}]".format(", ".join(REQUIRED_ENV)),
-            "      bins: [python3]",
-            "    primaryEnv: CLOUDRU_API_KEY",
-            "  nango:",
-            "    family: {}".format(entry["family"]),
-            "    provider_config_key: {}".format(
-                entry["provider_config_key"]
-            ),
+            "metadata: {}".format(metadata),
         ]
     )
 
@@ -170,23 +175,6 @@ def _validate_package(entry, errors):
         )
     if "name: {}".format(skill_id) not in frontmatter:
         errors.append("{}: frontmatter name does not match id".format(skill_id))
-
-    env_requirement = "env: [{}]".format(", ".join(REQUIRED_ENV))
-    if env_requirement not in frontmatter:
-        errors.append("{}: missing openclaw env requirements".format(skill_id))
-    if "bins: [python3]" not in frontmatter:
-        errors.append("{}: missing openclaw bins requirement".format(skill_id))
-    if "family: {}".format(entry["family"]) not in frontmatter:
-        errors.append("{}: metadata family does not match catalog".format(skill_id))
-    if (
-        "provider_config_key: {}".format(entry["provider_config_key"])
-        not in frontmatter
-    ):
-        errors.append(
-            "{}: metadata provider_config_key does not match catalog".format(
-                skill_id
-            )
-        )
 
     canonical_proxy = ROOT / "_shared" / "scripts" / "nango_proxy.py"
     packaged_proxy = package / "scripts" / "nango_proxy.py"

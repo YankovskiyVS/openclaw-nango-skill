@@ -110,7 +110,7 @@ EXPECTED_OPERATIONS = {
     "amocrm-users": ("call amocrm-users api/v4/users --json-output",),
 }
 
-SUPPORTED_FRONTMATTER = {"name", "description", "allowed-tools", "metadata"}
+SUPPORTED_FRONTMATTER = {"name", "description", "metadata"}
 GENERATED_PACKAGE_FILES = {
     "SKILL.md",
     "references/api-reference.md",
@@ -224,24 +224,80 @@ def test_catalog_is_the_ordered_source_for_all_existing_capabilities():
             assert command[1] in allowed_providers
 
 
-def test_all_25_skill_frontmatters_use_only_supported_fields_and_dependencies():
+def test_all_25_skill_frontmatters_are_plugin_first_and_runtime_parseable():
     skill_dirs = sorted(path.name for path in (ROOT / "skills").iterdir() if path.is_dir())
     assert set(skill_dirs) == set(EXPECTED_SKILLS)
 
     unsupported = {}
-    missing_requirements = []
+    malformed_metadata = []
     for skill_id in skill_dirs:
         text = (ROOT / "skills" / skill_id / "SKILL.md").read_text(encoding="utf-8")
         keys = _frontmatter_keys(text)
         if keys != SUPPORTED_FRONTMATTER:
             unsupported[skill_id] = sorted(keys - SUPPORTED_FRONTMATTER)
-        if "env: [NANGO_PROXY_URL, EVOLUTION_PROJECT_ID, EVOCLAW_ID, CLOUDRU_API_KEY]" not in text:
-            missing_requirements.append((skill_id, "env"))
-        if "bins: [python3]" not in text:
-            missing_requirements.append((skill_id, "bins"))
+        metadata_line = next(
+            (line for line in text.split("---", 2)[1].splitlines() if line.startswith("metadata: ")),
+            None,
+        )
+        try:
+            metadata = json.loads(metadata_line.removeprefix("metadata: "))
+        except (AttributeError, json.JSONDecodeError):
+            malformed_metadata.append(skill_id)
+            continue
+        if metadata.get("nango", {}).get("provider_config_key") != skill_id:
+            malformed_metadata.append(skill_id)
+
+        # The skill stays eligible when the plugin is installed even if the
+        # operator-only Python fallback environment is absent.
+        assert '"requires"' not in metadata_line
+        assert "nango_proxy_request" in text
+        assert "Operator-only fallback" in text
 
     assert unsupported == {}
-    assert missing_requirements == []
+    assert malformed_metadata == []
+
+
+def test_generated_skills_explain_approval_and_unknown_outcome_contracts():
+    forbidden_claims = (
+        "On **401** — API key / IAM",
+        "On **404** — wrong `EVOCLAW_ID`",
+        "missing/expired OAuth → ask user",
+        "OpenClaw never sees OAuth tokens",
+    )
+
+    for skill_id in EXPECTED_SKILLS:
+        text = (ROOT / "skills" / skill_id / "SKILL.md").read_text(encoding="utf-8")
+        assert "one-time approval" in text
+        assert "`unknown`" in text
+        assert "do not retry blindly" in text
+        assert "Do not use the Python fallback to bypass approval" in text
+        for claim in forbidden_claims:
+            assert claim not in text
+
+
+def test_provider_specific_skills_use_real_supported_surfaces():
+    disk = (ROOT / "skills" / "yandex-disk" / "SKILL.md").read_text(encoding="utf-8")
+    mail = (ROOT / "skills" / "yandex-mail" / "SKILL.md").read_text(encoding="utf-8")
+    calendar = (ROOT / "skills" / "yandex-calendar" / "SKILL.md").read_text(encoding="utf-8")
+    direct = (ROOT / "skills" / "yandex-direct" / "SKILL.md").read_text(encoding="utf-8")
+    maps = (ROOT / "skills" / "yandex-maps" / "SKILL.md").read_text(encoding="utf-8")
+    delivery = (ROOT / "skills" / "yandex-delivery" / "SKILL.md").read_text(encoding="utf-8")
+    chats = (ROOT / "skills" / "amocrm-chats" / "SKILL.md").read_text(encoding="utf-8")
+
+    assert "nango_disk_transfer" in disk
+    assert all(
+        action in mail
+        for action in ("resolve-mailbox", "list-messages", "get-message", "send-message")
+    )
+    assert "IMAP/SMTP bridge" in mail
+    assert "Do not extract or expose the OAuth token" in mail
+    assert "PROPFIND" in calendar and "REPORT" in calendar and "CalDAV" in calendar
+    assert "POST" in direct and '"method": "get"' in direct and "semantic read" in direct
+    assert "No public bookmarks endpoint is confirmed" in maps
+    assert "Do not invent `v1/`" in maps
+    assert "offers/create" in delivery and "mutation" in delivery
+    assert "Never use an empty create request as a health probe" in delivery
+    assert "send-message" in chats and "nango_action" in chats
 
 
 def test_generated_json_examples_are_literal_valid_json():

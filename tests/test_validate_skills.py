@@ -120,7 +120,11 @@ def test_validator_requires_exact_frontmatter_values_and_nesting(tmp_path):
     skill = root / "skills" / "yandex-id" / "SKILL.md"
     text = skill.read_text(encoding="utf-8")
     text = text.replace("name: yandex-id\n", "name: yandex-id-wrong\n", 1)
-    text = text.replace("      bins: [python3]\n", "  bins: [python3]\n", 1)
+    text = text.replace(
+        '"provider_config_key":"yandex-id"',
+        '"provider_config_key":"yandex-id-wrong"',
+        1,
+    )
     skill.write_text(text, encoding="utf-8")
 
     result = _run_validator(root)

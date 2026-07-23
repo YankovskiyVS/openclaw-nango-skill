@@ -58,7 +58,7 @@
       "when": "User asks to read or send Yandex Mail.",
       "scopes": "mail:imap_full, mail:smtp, login:email",
       "base": "https://login.yandex.ru (identity); mail via IMAP/SMTP",
-      "notes": "HTTP proxy does not speak IMAP. Use token with XOAUTH2 on imap.yandex.com / smtp.yandex.com.",
+      "notes": "The Python fallback resolves identity only. Mailbox reads and sends use registered Nango actions backed by the fixed IMAP/SMTP bridge; never expose the OAuth token.",
       "operations": [
         {
           "title": "Resolve mailbox email",
@@ -94,7 +94,7 @@
       "when": "User asks about Yandex Direct campaigns, ads, or reports.",
       "scopes": "direct:api",
       "base": "https://api.direct.yandex.com",
-      "notes": "Upstream auth header is Bearer (set by Nango provider template).",
+      "notes": "Nango injects the provider credential. The caller must not supply or override auth and Nango control headers.",
       "operations": [
         {
           "title": "JSON v5 campaigns",
@@ -111,11 +111,11 @@
       "description": "Call Yandex Maps (bookmarks scope) via Nango proxy after OAuth connect",
       "when": "User asks about Yandex Maps bookmarks / saved places (msps:public_bookmarks).",
       "scopes": "msps:public_bookmarks",
-      "base": "https://api-maps.yandex.ru",
-      "notes": "Exact bookmark REST paths depend on Maps product API; keep OAuth connection scoped to bookmarks.",
+      "base": "No verified public bookmarks REST base",
+      "notes": "No public bookmarks route is confirmed. Keep generic HTTP capability available for an operator-supplied documented product endpoint, but never invent a path or schema.",
       "operations": [
         {
-          "title": "After OAuth, call Maps endpoints as documented for bookmarks API",
+          "title": "Legacy placeholder — do not execute without a documented path",
           "command": "call yandex-maps v1/ --json-output"
         }
       ]
@@ -130,7 +130,7 @@
       "when": "User asks about Market partner campaigns, offers, or partner cabinet data.",
       "scopes": "market:partner-api",
       "base": "https://api.partner.market.yandex.ru",
-      "notes": "Market prefers Api-Key for new apps; OAuth still works for transitional setups.",
+      "notes": "Authentication behavior depends on the configured Nango provider and has not been live-verified by this repository.",
       "operations": [
         {
           "title": "Campaigns v2",
@@ -148,10 +148,10 @@
       "when": "User asks about Yandex Delivery offers, claims, or partner logistics API.",
       "scopes": "delivery:partner-api",
       "base": "https://b2b.taxi.yandex.net",
-      "notes": "Upstream auth header is Bearer (set by Nango provider template).",
+      "notes": "The create route requires the exact matching Delivery product schema. Never send an empty create body as a connectivity test.",
       "operations": [
         {
-          "title": "Platform probe",
+          "title": "Legacy create shape — do not execute without real required fields",
           "command": "call yandex-delivery api/b2b/platform/offers/create --method POST --json '{}' --json-output"
         }
       ]

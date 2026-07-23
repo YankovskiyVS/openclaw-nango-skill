@@ -16,4 +16,4 @@ python3 {baseDir}/scripts/nango_proxy.py call yandex-direct json/v5/campaigns --
 
 ## Notes
 
-Upstream auth header is Bearer (set by Nango provider template).
+Nango injects the provider credential. The caller must not supply or override auth and Nango control headers.

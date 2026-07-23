@@ -16,4 +16,4 @@ python3 {baseDir}/scripts/nango_proxy.py call yandex-mail info --query 'format=j
 
 ## Notes
 
-HTTP proxy does not speak IMAP. Use token with XOAUTH2 on imap.yandex.com / smtp.yandex.com.
+The Python fallback resolves identity only. Mailbox reads and sends use registered Nango actions backed by the fixed IMAP/SMTP bridge; never expose the OAuth token.
