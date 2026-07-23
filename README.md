@@ -1,119 +1,178 @@
-# openclaw-nango-skill
+# OpenClaw Nango skills and typed tools
 
-Marketplace of **granular OpenClaw skills** for Nango integrations (Yandex, Bitrix24, amoCRM, …).
+This repository contains 25 granular OpenClaw skills for Yandex, Bitrix24 and
+amoCRM integrations, plus a typed OpenClaw plugin that executes their Nango
+operations through explicit security boundaries.
 
-Each skill maps 1:1 to a Nango `provider_config_key`. Install **only** skills for OAuth integrations the user connected on this EvoClaw — not the whole tree.
+One skill still maps 1:1 to one model-visible Nango
+`provider_config_key`. Install only the skills that match OAuth integrations
+connected for the user; see [CATALOG.md](CATALOG.md).
 
-Agent never sees OAuth tokens or Nango secrets — only proxy URL and project API key.
+## What changed
 
-## Layout
+The original generic HTTP capability is preserved, including GET, POST, PUT,
+PATCH, DELETE, HEAD, OPTIONS, CalDAV methods and provider-specific RPC shapes.
+The normal agent path is now four typed tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `nango_proxy_request` | One validated provider request |
+| `nango_proxy_paginate` | Bounded registered read pagination |
+| `nango_action` | A registered Nango Action with a fixed integration mapping |
+| `nango_disk_transfer` | Bounded Yandex Disk upload/download without exposing transfer URLs |
+
+Every skill is plugin-first. Its bundled Python client remains available as an
+operator-only compatibility fallback, so existing generic provider operations
+were not removed.
+
+The repository also includes:
+
+- Yandex Mail Nango Actions and a bounded IMAP/SMTP HTTPS bridge;
+- an amoCRM Chats channel-HMAC send Action;
+- generated provider-specific skill instructions and references;
+- offline regression suites and CI.
+
+## Why the plugin exists
+
+Prompt instructions alone cannot enforce a safety boundary. The plugin:
+
+- derives project, EvoClaw and Nango connection ids from operator config;
+- accepts only catalog provider ids and relative validated paths;
+- blocks credential, routing and method-override headers;
+- bounds request, response, pagination, Action and transfer sizes;
+- separates read retries from mutations;
+- returns `not_started`, `confirmed_failed` or `unknown` for failures;
+- asks for an exact one-time approval before mutations;
+- consumes a proof bound to the exact tool call and parameters before I/O;
+- never accepts OAuth tokens or Nango secrets as tool parameters.
+
+Read operations do not prompt. Mutations offer only `allow-once` or `deny`.
+Plugin approvals are separate from host exec approvals.
+
+## Repository layout
 
 ```text
-openclaw-nango-skill/
-  CATALOG.md              # install matrix: skill ↔ provider_config_key
-  _shared/                # source of truth for CLI + API docs
-    scripts/nango_proxy.py
-    references/api-reference.md
-  scripts/generate_skills.py
-  skills/
-    yandex-disk/          # one directory = one installable skill
-      SKILL.md
-      scripts/nango_proxy.py
-      references/…
-    bitrix24-crm/
-    amocrm-crm/
-    …
+openclaw-plugin/       typed tools, approval policy and transports
+nango-integrations/    Yandex Mail and amoCRM Chats Actions
+mail-bridge/           bounded Yandex IMAP/SMTP HTTPS bridge
+skills/                25 generated installable skills
+catalog/skills.json    skill/catalog source of truth
+_shared/               Python fallback and shared API reference
+scripts/               generators and validators
+tests/                 Python and skill regression tests
+docs/                  install, deploy and live-verification runbooks
 ```
 
-Regenerate skill packages after editing the catalog:
+## Install
+
+Build and test the plugin:
+
+```bash
+npm ci
+npm test --workspace openclaw-plugin
+npm run typecheck --workspace openclaw-plugin
+npm run build --workspace openclaw-plugin
+```
+
+Then follow [docs/install-openclaw-plugin.md](docs/install-openclaw-plugin.md)
+for:
+
+- local or managed plugin installation;
+- `plugins.entries.nango-tools.config`;
+- OpenClaw SecretRefs;
+- optional tool exposure;
+- plugin approval routing;
+- Action proxy/direct modes;
+- Yandex Disk roots.
+
+Copy only the required directories from `skills/` into the target agent's
+skills workspace.
+
+## Operator configuration
+
+The plugin requires:
+
+- exact Cloud.ru proxy base URL;
+- project id;
+- EvoClaw id;
+- Cloud.ru API key, preferably supplied as an OpenClaw SecretRef.
+
+The provider proxy route is:
+
+```text
+{proxyBaseUrl}/api/v1/{projectId}/evo-claws/{evoClawId}/proxy/{providerConfigKey}/{path}
+```
+
+The Nango connection id is derived as:
+
+```text
+project-{projectId}-evoclaw-{evoClawId}
+```
+
+Nango Actions and Disk transfer are independently disabled until their config
+blocks are present. The ordinary provider proxy is not assumed to implement
+the separate Action backend contract.
+
+## Generate and validate skills
+
+Edit `catalog/skills.json` or the generator, then run:
 
 ```bash
 python3 scripts/generate_skills.py
+python3 scripts/generate_skills.py --check
+python3 scripts/validate_skills.py
 ```
 
-## Install rule
-
-| User connected in console | Install skill dir |
-| --- | --- |
-| Yandex Disk | `skills/yandex-disk/` |
-| Bitrix24 CRM | `skills/bitrix24-crm/` |
-| amoCRM deals | `skills/amocrm-crm/` |
-| … | see [CATALOG.md](CATALOG.md) |
-
-Copy each chosen directory into the agent skills workspace, e.g.:
+Generated skill packages contain:
 
 ```text
-…/.openclaw/workspace/<agent>/skills/yandex-disk/
-…/.openclaw/workspace/<agent>/skills/bitrix24-crm/
+skills/<provider>/
+  SKILL.md
+  references/endpoints.md
+  references/api-reference.md
+  scripts/nango_proxy.py
 ```
 
-Do **not** install skills for providers without a completed OAuth connection.
+Do not hand-edit generated copies without updating their source.
 
-## Required env
-
-| Variable | Required | Notes |
-| --- | --- | --- |
-| `NANGO_PROXY_URL` | yes | Base URL proxy **without** trailing slash |
-| `EVOLUTION_PROJECT_ID` | yes | Project UUID |
-| `EVOCLAW_ID` | yes | This EvoClaw UUID |
-| `CLOUDRU_API_KEY` | yes | Project API key; IAM `ai-agents.systems.invoke` |
-
-Stage (in-cluster):
-
-```text
-NANGO_PROXY_URL=http://ai-assistant-nango-proxy.ai-assistant-nango-proxy.svc.cluster.local:8080
-```
-
-If `NANGO_PROXY_URL` is unset, the CLI defaults to that stage URL.
-
-Connection id in Nango:
-
-```text
-project-{EVOLUTION_PROJECT_ID}-evoclaw-{EVOCLAW_ID}
-```
-
-Skills only **call** the proxy; they do not create or revoke OAuth.
-
-## How connected providers are known
-
-There is no live “what is connected” list inside the skill.
-
-- Which skill to ship: driven by console OAuth + [CATALOG.md](CATALOG.md).
-- At call time: proxy looks up the connection; missing OAuth → error → agent asks the user to reconnect that `provider_config_key` in console.
-
-## Smoke test
-
-With env set and Yandex ID OAuth connected:
+## Full offline verification
 
 ```bash
-cd skills/yandex-id
-python3 scripts/nango_proxy.py call yandex-id info \
-  --query 'format=json' \
-  --json-output
+python3 -m pip install --requirement requirements-dev.txt
+python3 -m pytest -q
+python3 scripts/generate_skills.py --check
+python3 scripts/validate_skills.py
+
+npm ci
+npm test --workspace openclaw-plugin
+npm run typecheck --workspace openclaw-plugin
+npm run build --workspace openclaw-plugin
+
+(cd nango-integrations && npm ci && npm test && npm run typecheck && npm run build)
+(cd mail-bridge && npm ci && npm test && npm run typecheck && npm run build)
+
+git diff --check
 ```
 
-(`yandex` is an alias of `yandex-id` where configured.)
+CI repeats these checks on Python 3.10/3.12 and Node.js 22.22.2 and builds the
+mail bridge container.
 
-## API shape
+## Deploy and verify
 
-```text
-{METHOD} {NANGO_PROXY_URL}/api/v1/{project_id}/evo-claws/{evoclaw_id}/proxy/{provider_config_key}/{upstream_path}
-Authorization: Api-Key {CLOUDRU_API_KEY}
-```
+- [Deploy Nango Actions and the mail bridge](docs/deploy-nango-actions.md)
+- [Run live verification](docs/live-verification.md)
 
-Details: `_shared/references/api-reference.md` (copied into each skill).
+Live credentials, provider mutations, `nango dryrun` and deployments are not
+part of the offline test suite. A green build therefore does not prove that a
+specific OAuth connection or deployed backend works.
 
-## Troubleshooting
+Known boundaries:
 
-| Symptom | Likely cause |
-| --- | --- |
-| `Missing required value: …` | Env / CLI override missing |
-| HTTP 401 from proxy | API key / IAM `ai-agents.systems.invoke` |
-| HTTP 404 from proxy | Wrong `EVOCLAW_ID` / evo-claw not found |
-| `nango connection not found` | OAuth not finished or webhook did not store connection |
-| Timeout | No network / Istio egress to nango-proxy |
-| Upstream 4xx | Wrong provider path or expired token → reconnect |
-
-## Dependency
-
-Python 3 + `httpx` (`required_pip` in each `SKILL.md`).
+- Yandex Maps personal bookmarks has no confirmed public API route in this
+  repository; generic customer-specific Nango HTTP access remains available.
+- Yandex Mail requires the separately deployed HTTPS bridge.
+- amoCRM OAuth Talks reads and Chats channel sends use separate internal
+  integrations.
+- inbound amoCRM Chats webhook verification is not implemented.
+- any mutation result with outcome `unknown` must be reconciled at the provider
+  before retrying.
