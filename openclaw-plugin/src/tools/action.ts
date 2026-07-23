@@ -9,6 +9,7 @@ import type { ApprovalController } from "../approval.js";
 import type { RuntimeConfig, RuntimeActionsConfig } from "../config.js";
 import { deriveConnectionId } from "../proxy-client.js";
 import {
+  containsConfiguredSecret,
   createFailureResult,
   createSuccessResult,
   filterResponseHeaders,
@@ -446,7 +447,14 @@ function responseJson(
     );
   }
   try {
-    return JSON.parse(text);
+    const parsed: unknown = JSON.parse(text);
+    if (containsConfiguredSecret(parsed, secrets)) {
+      throw new ActionTransportError(
+        "unknown_upstream",
+        "invalid_action_response",
+      );
+    }
+    return parsed;
   } catch {
     throw new ActionTransportError(
       "unknown_upstream",
@@ -645,6 +653,18 @@ async function executeTransport(
       );
     }
     const contentType = response.headers.get("content-type")?.trim() ?? "";
+    const projectedHeaders = filterResponseHeaders(response.headers);
+    if (
+      containsConfiguredSecret(
+        { contentType, headers: projectedHeaders },
+        request.secrets,
+      )
+    ) {
+      throw new ActionTransportError(
+        "unknown_upstream",
+        "invalid_action_response",
+      );
+    }
     const text = await readBoundedText(
       response,
       actions.maxOutputBytes,

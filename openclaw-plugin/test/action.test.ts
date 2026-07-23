@@ -692,6 +692,51 @@ describe("Action transport", () => {
     }
   });
 
+  test("rejects a JSON-escaped runtime secret after response decoding", async () => {
+    const escapedSecret = 'nango"slash\\tail';
+    const fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          ok: true,
+          outcome: "confirmed",
+          result: {
+            mailbox: "sender@example.test",
+            messageId: escapedSecret,
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    const tool = createActionTool({
+      config: runtimeConfig("direct", {
+        transport: {
+          mode: "direct",
+          baseUrl: "https://api.nango.dev",
+          secretKey: escapedSecret,
+        },
+      }),
+      approvals: approvals("mutation"),
+      fetch,
+    });
+
+    const result = await tool.execute(
+      "escaped-secret-response",
+      yandexSendParams(),
+    );
+
+    expect(result).toMatchObject({
+      details: {
+        ok: false,
+        error: { code: "invalid_action_response" },
+        outcome: "unknown",
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain(escapedSecret);
+  });
+
   test("consumes a real one-time mutation approval before any transport result", async () => {
     const controller = createApprovalController({
       key: new Uint8Array(32).fill(9),

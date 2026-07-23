@@ -511,6 +511,58 @@ describe("bounded response handling", () => {
     });
   });
 
+  test.each([
+    {
+      name: "decoded JSON body",
+      response: () =>
+        jsonResponse({
+          reflected: "cloudru-secret-sentinel",
+        }),
+    },
+    {
+      name: "text body",
+      response: () =>
+        new Response("prefix cloudru-secret-sentinel suffix", {
+          headers: { "content-type": "text/plain" },
+        }),
+    },
+    {
+      name: "projected response header",
+      response: () =>
+        jsonResponse(
+          { accepted: true },
+          {
+            headers: {
+              "x-request-id":
+                "request-cloudru-secret-sentinel-value",
+            },
+          },
+        ),
+    },
+  ])("rejects a runtime secret reflected in the $name", async ({ response }) => {
+    const secret = "cloudru-secret-sentinel";
+    const client = createProxyClient(runtimeConfig(), {
+      fetch: vi.fn(async () => response()),
+    });
+
+    const result = await client.request({
+      providerConfigKey: "amocrm-crm",
+      operationKind: "read",
+      method: "GET",
+      path: "api/v4/leads",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        layer: "unknown_upstream",
+        code: "secret_in_response",
+      },
+      outcome: "confirmed_failed",
+    });
+    expect(JSON.stringify(result)).not.toContain(secret);
+  });
+
   test("returns a complete binary digest without body bytes", async () => {
     const bytes = Uint8Array.from([0, 1, 2, 3, 255]);
     const client = createProxyClient(runtimeConfig(), {

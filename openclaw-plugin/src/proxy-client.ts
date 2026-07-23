@@ -6,6 +6,7 @@ import {
 } from "./catalog.js";
 import type { RuntimeConfig } from "./config.js";
 import {
+  containsConfiguredSecret,
   createFailureResult,
   createSuccessResult,
   filterResponseHeaders,
@@ -473,16 +474,22 @@ function responseFailure(
 
 function responseParseFailure(
   request: RequestSummary,
-  code: "invalid_json_response" | "response_too_large",
+  code:
+    | "invalid_json_response"
+    | "response_too_large"
+    | "secret_in_response",
   operationKind: NormalizedRequest["operationKind"],
   status: number,
 ): FailureResult {
   return createFailureResult(request, {
     layer: "unknown_upstream",
     code,
-    message: code === "response_too_large"
-      ? "Upstream response exceeded the configured limit"
-      : "Upstream JSON response was invalid",
+    message:
+      code === "response_too_large"
+        ? "Upstream response exceeded the configured limit"
+        : code === "secret_in_response"
+          ? "Upstream response contained a configured secret"
+          : "Upstream JSON response was invalid",
     status,
     retryable: false,
     outcome: operationKind === "read"
@@ -888,12 +895,29 @@ export function createProxyClient(
           ) {
             cancelResponseBody(response);
             clearAttemptTimer();
-            return createSuccessResult(normalized.summary, {
+            const responseSummary = {
               status: response.status,
               contentType: safeContentType(response.headers),
               headers: filterResponseHeaders(response.headers),
               body: null,
-            });
+            } as const;
+            if (
+              containsConfiguredSecret(
+                responseSummary,
+                [config.cloudru.apiKey],
+              )
+            ) {
+              return responseParseFailure(
+                normalized.summary,
+                "secret_in_response",
+                normalized.operationKind,
+                response.status,
+              );
+            }
+            return createSuccessResult(
+              normalized.summary,
+              responseSummary,
+            );
           }
 
           const contentType = safeContentType(response.headers);
@@ -998,12 +1022,29 @@ export function createProxyClient(
               response.status,
             );
           }
-          return createSuccessResult(normalized.summary, {
+          const responseSummary = {
             status: response.status,
             contentType,
             headers: filterResponseHeaders(response.headers),
             body,
-          });
+          } as const;
+          if (
+            containsConfiguredSecret(
+              responseSummary,
+              [config.cloudru.apiKey],
+            )
+          ) {
+            return responseParseFailure(
+              normalized.summary,
+              "secret_in_response",
+              normalized.operationKind,
+              response.status,
+            );
+          }
+          return createSuccessResult(
+            normalized.summary,
+            responseSummary,
+          );
         }
         return networkFailure(
           normalized.summary,

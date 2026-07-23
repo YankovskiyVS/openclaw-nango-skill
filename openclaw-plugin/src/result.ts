@@ -117,6 +117,50 @@ export type FailureDescriptor = Readonly<{
   outcome: FailureOutcome;
 }>;
 
+export function containsConfiguredSecret(
+  value: unknown,
+  secrets: readonly string[],
+): boolean {
+  const candidates = secrets.filter((secret) => secret.length > 0);
+  if (candidates.length === 0) {
+    return false;
+  }
+  const pending: unknown[] = [value];
+  const visited = new WeakSet<object>();
+  let nodes = 0;
+  while (pending.length > 0) {
+    const current = pending.pop();
+    nodes += 1;
+    if (nodes > 100_000) {
+      return true;
+    }
+    if (typeof current === "string") {
+      if (candidates.some((secret) => current.includes(secret))) {
+        return true;
+      }
+      continue;
+    }
+    if (typeof current !== "object" || current === null) {
+      continue;
+    }
+    if (visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+    if (Array.isArray(current)) {
+      pending.push(...current);
+      continue;
+    }
+    for (const [key, child] of Object.entries(current)) {
+      if (candidates.some((secret) => key.includes(secret))) {
+        return true;
+      }
+      pending.push(child);
+    }
+  }
+  return false;
+}
+
 function utf8Bytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
 }
