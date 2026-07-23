@@ -201,12 +201,14 @@ Local paths must remain beneath one configured root. The runtime rejects
 traversal, symlinks, unsafe transfer hosts and non-public network targets.
 Each configured root, its canonical ancestors and every traversed child
 directory must be owned by either root or the Gateway OS user and must not be
-group- or world-writable. Configure the fully canonical root path: roots
-reached through a symlink alias fail closed even when the final directory is
-otherwise safe. Provision dedicated POSIX directories such as the
-`/srv/openclaw` example; shared writable roots fail closed. Processes running
-under the same Gateway OS identity are inside this local trust boundary and
-must not be treated as mutually hostile.
+group- or world-writable. Do not grant another OS identity write access through
+an ACL; ownership and mode are enforced by the runtime, while ACL provisioning
+remains an operator responsibility. Configure the fully canonical root path:
+roots reached through a symlink alias fail closed even when the final
+directory is otherwise safe. Provision dedicated POSIX directories such as
+the `/srv/openclaw` example; shared writable roots fail closed. Processes
+running under the same Gateway OS identity are inside this local trust
+boundary and must not be treated as mutually hostile.
 
 ## Route approvals
 
