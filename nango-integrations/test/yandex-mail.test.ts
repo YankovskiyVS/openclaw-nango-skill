@@ -268,6 +268,7 @@ describe('bridge signing and fixed transport', () => {
             endpoint: BRIDGE_PATHS.listMessages,
             baseUrlOverride: 'https://mail-bridge.example',
             retries: 0,
+            forwardHeadersOnRedirect: false,
             data: `{"mailbox":"${MAILBOX}","payload":{"folder":"INBOX","limit":5,"unseenOnly":false}}`
         });
         expect(request).not.toHaveProperty('providerConfigKey');
@@ -344,6 +345,65 @@ describe('bridge signing and fixed transport', () => {
         });
         expect(JSON.stringify(result)).not.toContain(SECRET);
         expect(JSON.stringify(result)).not.toContain('oauth-access-token');
+    });
+
+    it('preserves an exact safe bridge envelope from an Axios non-2xx response', async () => {
+        const bridgeFailure = {
+            ok: false,
+            outcome: 'not_started',
+            error: {
+                code: 'idempotency_conflict',
+                message: 'The idempotency key was already used for a different message.',
+                retryable: false
+            }
+        } as const;
+        const nango = nangoMock({
+            postError: {
+                response: {
+                    status: 409,
+                    data: bridgeFailure
+                }
+            }
+        });
+
+        const result = await sendMessageAction.exec(nango as never, {
+            idempotencyKey: 'send-12345678',
+            to: ['recipient@example.com'],
+            subject: 'hello',
+            text: 'body'
+        });
+
+        expect(result).toEqual(bridgeFailure);
+    });
+
+    it('does not trust a lookalike non-2xx error envelope with extra fields', async () => {
+        const nango = nangoMock({
+            postError: {
+                response: {
+                    status: 409,
+                    data: {
+                        ok: false,
+                        outcome: 'not_started',
+                        error: {
+                            code: 'idempotency_conflict',
+                            message: 'conflict',
+                            retryable: false,
+                            secret: SECRET
+                        }
+                    }
+                }
+            }
+        });
+
+        const result = await sendMessageAction.exec(nango as never, {
+            idempotencyKey: 'send-12345678',
+            to: ['recipient@example.com'],
+            subject: 'hello',
+            text: 'body'
+        });
+
+        expect(result).toMatchObject({ ok: false, outcome: 'unknown', error: { code: 'mail_bridge_outcome_unknown' } });
+        expect(JSON.stringify(result)).not.toContain(SECRET);
     });
 
     it('uses confirmed_failed after a read bridge dispatch fails', async () => {

@@ -228,6 +228,7 @@ type NangoRuntime = {
         endpoint: string;
         baseUrlOverride: string;
         retries: number;
+        forwardHeadersOnRedirect: false;
         data: string;
         headers: Record<string, string>;
     }): Promise<{ data: T }>;
@@ -388,6 +389,7 @@ export async function callMailBridge<T extends z.ZodTypeAny>(input: {
             endpoint: input.path,
             baseUrlOverride: bridgeConfig.origin,
             retries: 0,
+            forwardHeadersOnRedirect: false,
             data: body,
             headers: signed.headers
         });
@@ -400,7 +402,13 @@ export async function callMailBridge<T extends z.ZodTypeAny>(input: {
             input.mutating ? 'mail_bridge_outcome_unknown' : 'mail_bridge_response_invalid',
             false
         );
-    } catch {
+    } catch (error) {
+        if (isRecord(error) && isRecord(error.response)) {
+            const parsed = input.output.safeParse(error.response.data);
+            if (parsed.success) {
+                return parsed.data;
+            }
+        }
         return failure(
             input.mutating ? 'unknown' : 'confirmed_failed',
             input.mutating ? 'mail_bridge_outcome_unknown' : 'mail_bridge_request_failed',
