@@ -1,0 +1,223 @@
+{
+  "schema_version": "1.0",
+  "artifact_type": "model_routing_audit",
+  "date": "2026-07-23",
+  "methodology": {
+    "variants": [
+      {
+        "name": "current",
+        "source_glob": "skills/*/SKILL.md at 92d88e8867a1c06ca7ac03d2de3fd2e98527dd8b",
+        "run_count": 1,
+        "executor": "fresh child agent with fork_turns=none"
+      },
+      {
+        "name": "upstream",
+        "source_glob": "skills/*/SKILL.md at 12903d917509fab4a4da4d7dd0489a42c00286e6",
+        "run_count": 1,
+        "executor": "fresh child agent with fork_turns=none"
+      }
+    ],
+    "allowed_skill_input": "Only YAML frontmatter fields name and description from all 25 skills; skill bodies and other files were excluded.",
+    "query_execution": "All 24 queries were classified in one batch per variant.",
+    "response_contract": "One exact skill id or none for every query id, returned as a strict JSON object.",
+    "provider_or_tool_execution": false,
+    "network_access": false
+  },
+  "queries": [
+    {
+      "id": "p01",
+      "text": "Общая информация об аккаунте amoCRM и его тарифе.",
+      "expected_skill": "amocrm"
+    },
+    {
+      "id": "p02",
+      "text": "Каталоги и пользовательские списки amoCRM.",
+      "expected_skill": "amocrm-catalog"
+    },
+    {
+      "id": "p03",
+      "text": "Последние диалоги и чаты amoCRM.",
+      "expected_skill": "amocrm-chats"
+    },
+    {
+      "id": "p04",
+      "text": "События изменения статусов сущностей в amoCRM.",
+      "expected_skill": "amocrm-events"
+    },
+    {
+      "id": "p05",
+      "text": "Незавершённые задачи amoCRM.",
+      "expected_skill": "amocrm-tasks"
+    },
+    {
+      "id": "p06",
+      "text": "Входящие телефонные звонки в amoCRM.",
+      "expected_skill": "amocrm-telephony"
+    },
+    {
+      "id": "p07",
+      "text": "Пользователи amoCRM.",
+      "expected_skill": "amocrm-users"
+    },
+    {
+      "id": "p08",
+      "text": "Текущий пользователь базового Bitrix24 REST подключения.",
+      "expected_skill": "bitrix24"
+    },
+    {
+      "id": "p09",
+      "text": "Шаблоны бизнес-процессов Bitrix24.",
+      "expected_skill": "bitrix24-bizproc"
+    },
+    {
+      "id": "p10",
+      "text": "Разделы календаря Bitrix24.",
+      "expected_skill": "bitrix24-calendar"
+    },
+    {
+      "id": "p11",
+      "text": "Хранилища Диска Bitrix24.",
+      "expected_skill": "bitrix24-disk"
+    },
+    {
+      "id": "p12",
+      "text": "Последние диалоги в мессенджере Bitrix24.",
+      "expected_skill": "bitrix24-im"
+    },
+    {
+      "id": "p13",
+      "text": "Мои задачи Bitrix24.",
+      "expected_skill": "bitrix24-tasks"
+    },
+    {
+      "id": "p14",
+      "text": "Внешние телефонные линии Bitrix24.",
+      "expected_skill": "bitrix24-telephony"
+    },
+    {
+      "id": "p15",
+      "text": "Отделы и пользователи Bitrix24.",
+      "expected_skill": "bitrix24-user"
+    },
+    {
+      "id": "p16",
+      "text": "Партнёрские кампании Yandex Market.",
+      "expected_skill": "yandex-market"
+    },
+    {
+      "id": "n01",
+      "text": "Лиды amoCRM, а не общая информация аккаунта.",
+      "expected_skill": "amocrm-crm"
+    },
+    {
+      "id": "n02",
+      "text": "Входящие звонки amoCRM, не чаты.",
+      "expected_skill": "amocrm-telephony"
+    },
+    {
+      "id": "n03",
+      "text": "Задачи amoCRM, не журнал событий.",
+      "expected_skill": "amocrm-tasks"
+    },
+    {
+      "id": "n04",
+      "text": "Календарные разделы Bitrix24, не задачи.",
+      "expected_skill": "bitrix24-calendar"
+    },
+    {
+      "id": "n05",
+      "text": "Скачать файл с Яндекс Диска, а не с Диска Bitrix24.",
+      "expected_skill": "yandex-disk"
+    },
+    {
+      "id": "n06",
+      "text": "Чаты Bitrix24, не переписка amoCRM.",
+      "expected_skill": "bitrix24-im"
+    },
+    {
+      "id": "n07",
+      "text": "Кампании Yandex Market, не сохранённые места Yandex Maps.",
+      "expected_skill": "yandex-market"
+    },
+    {
+      "id": "n08",
+      "text": "Отделы сотрудников Bitrix24, не только базовый current user.",
+      "expected_skill": "bitrix24-user"
+    }
+  ],
+  "selected": {
+    "current": {
+      "p01": "amocrm",
+      "p02": "amocrm-catalog",
+      "p03": "amocrm-chats",
+      "p04": "amocrm-events",
+      "p05": "amocrm-tasks",
+      "p06": "amocrm-telephony",
+      "p07": "amocrm-users",
+      "p08": "bitrix24",
+      "p09": "bitrix24-bizproc",
+      "p10": "bitrix24-calendar",
+      "p11": "bitrix24-disk",
+      "p12": "bitrix24-im",
+      "p13": "bitrix24-tasks",
+      "p14": "bitrix24-telephony",
+      "p15": "bitrix24-user",
+      "p16": "yandex-market",
+      "n01": "amocrm-crm",
+      "n02": "amocrm-telephony",
+      "n03": "amocrm-tasks",
+      "n04": "bitrix24-calendar",
+      "n05": "yandex-disk",
+      "n06": "bitrix24-im",
+      "n07": "yandex-market",
+      "n08": "bitrix24-user"
+    },
+    "upstream": {
+      "p01": "amocrm",
+      "p02": "amocrm-catalog",
+      "p03": "amocrm-chats",
+      "p04": "amocrm-events",
+      "p05": "amocrm-tasks",
+      "p06": "amocrm-telephony",
+      "p07": "amocrm-users",
+      "p08": "bitrix24",
+      "p09": "bitrix24-bizproc",
+      "p10": "bitrix24-calendar",
+      "p11": "bitrix24-disk",
+      "p12": "bitrix24-im",
+      "p13": "bitrix24-tasks",
+      "p14": "bitrix24-telephony",
+      "p15": "bitrix24-user",
+      "p16": "yandex-market",
+      "n01": "amocrm-crm",
+      "n02": "amocrm-telephony",
+      "n03": "amocrm-tasks",
+      "n04": "bitrix24-calendar",
+      "n05": "yandex-disk",
+      "n06": "bitrix24-im",
+      "n07": "yandex-market",
+      "n08": "bitrix24-user"
+    }
+  },
+  "scores": {
+    "current": {
+      "matched": 24,
+      "total": 24,
+      "accuracy": 1.0
+    },
+    "upstream": {
+      "matched": 24,
+      "total": 24,
+      "accuracy": 1.0
+    },
+    "identical_selected_maps": true
+  },
+  "limitations": [
+    "Only one model run was performed for each variant, so stochastic variance and repeatability were not measured.",
+    "All 24 queries were classified in one batch, so earlier queries could influence later answers.",
+    "The classifier saw only skill name and description metadata, not full skill instructions or runtime tool schemas.",
+    "This is a metadata-routing proxy test, not a direct test of the OpenClaw or Codex automatic skill-trigger mechanism.",
+    "The query set covers 16 previously uncovered positive routes and 8 near-miss routes, but not every possible ambiguity among all 25 skills.",
+    "No provider, plugin tool, OAuth connection, network request, or live runtime was exercised."
+  ]
+}
