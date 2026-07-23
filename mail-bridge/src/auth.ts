@@ -156,7 +156,69 @@ export class InMemoryAtomicStore implements AtomicStateStore {
 type RedisClientLike = {
     connect(): Promise<unknown>;
     eval(script: string, options: { keys: string[]; arguments: string[] }): Promise<unknown>;
+    on(event: 'error', listener: (error: unknown) => void): unknown;
+    on(event: 'ready' | 'end' | 'reconnecting', listener: () => void): unknown;
 };
+
+export type RedisStoreStatusEvent = {
+    component: 'mail_bridge_redis';
+    available: boolean;
+    code: 'redis_ready' | 'shared_store_unavailable';
+};
+
+type RedisStoreStatusReporter = (event: RedisStoreStatusEvent) => void;
+
+function defaultRedisStoreStatusReporter(event: RedisStoreStatusEvent): void {
+    try {
+        process.stderr.write(`${JSON.stringify(event)}\n`);
+    } catch {
+        // Observability must never turn a handled Redis lifecycle event into a process crash.
+    }
+}
+
+class RedisAvailability {
+    #state: 'connecting' | 'available' | 'unavailable';
+    readonly #reportStatus: RedisStoreStatusReporter;
+
+    constructor(reportStatus: RedisStoreStatusReporter, initialState: 'connecting' | 'available' = 'connecting') {
+        this.#reportStatus = reportStatus;
+        this.#state = initialState;
+    }
+
+    isAvailable(): boolean {
+        return this.#state === 'available';
+    }
+
+    markAvailable(): void {
+        this.#transition('available');
+    }
+
+    markConnectedFallback(): void {
+        if (this.#state === 'connecting') {
+            this.#transition('available');
+        }
+    }
+
+    markUnavailable(): void {
+        this.#transition('unavailable');
+    }
+
+    #transition(next: 'available' | 'unavailable'): void {
+        if (this.#state === next) {
+            return;
+        }
+        this.#state = next;
+        try {
+            this.#reportStatus({
+                component: 'mail_bridge_redis',
+                available: next === 'available',
+                code: next === 'available' ? 'redis_ready' : 'shared_store_unavailable'
+            });
+        } catch {
+            // A caller-provided metrics/logging sink must not destabilize the bridge.
+        }
+    }
+}
 
 const REDIS_BEGIN_SEND = `
 local current_hash = redis.call('HGET', KEYS[1], 'body_hash')
@@ -198,14 +260,19 @@ return 1
 
 export class RedisAtomicStore implements AtomicStateStore {
     readonly #client: RedisClientLike;
+    readonly #availability: RedisAvailability;
 
-    constructor(client: RedisClientLike) {
+    constructor(
+        client: RedisClientLike,
+        availability = new RedisAvailability(() => undefined, 'available')
+    ) {
         this.#client = client;
+        this.#availability = availability;
     }
 
     async consumeNonce(nonce: string, ttlSeconds: number): Promise<boolean> {
         const key = `mail-bridge:nonce:${createHash('sha256').update(nonce).digest('hex')}`;
-        const result = await this.#client.eval(
+        const result = await this.#eval(
             "return redis.call('SET', KEYS[1], '1', 'NX', 'EX', ARGV[1])",
             {
                 keys: [key],
@@ -216,11 +283,12 @@ export class RedisAtomicStore implements AtomicStateStore {
     }
 
     async beginSend(key: string, bodyHash: string, ttlSeconds: number): Promise<BeginSendResult> {
-        const result = await this.#client.eval(REDIS_BEGIN_SEND, {
+        const result = await this.#eval(REDIS_BEGIN_SEND, {
             keys: [ledgerKey(key)],
             arguments: [bodyHash, String(ttlSeconds)]
         });
         if (!Array.isArray(result) || typeof result[0] !== 'string') {
+            this.#availability.markUnavailable();
             throw sharedStoreUnavailable();
         }
         switch (result[0]) {
@@ -232,16 +300,18 @@ export class RedisAtomicStore implements AtomicStateStore {
                 return { kind: 'unknown' };
             case 'cached':
                 if (typeof result[1] !== 'string') {
+                    this.#availability.markUnavailable();
                     throw sharedStoreUnavailable();
                 }
                 return { kind: 'cached', result: result[1] };
             default:
+                this.#availability.markUnavailable();
                 throw sharedStoreUnavailable();
         }
     }
 
     async confirmSend(key: string, bodyHash: string, result: string, ttlSeconds: number): Promise<boolean> {
-        const response = await this.#client.eval(REDIS_CONFIRM_SEND, {
+        const response = await this.#eval(REDIS_CONFIRM_SEND, {
             keys: [ledgerKey(key)],
             arguments: [bodyHash, result, String(ttlSeconds)]
         });
@@ -249,11 +319,26 @@ export class RedisAtomicStore implements AtomicStateStore {
     }
 
     async markSendUnknown(key: string, bodyHash: string, ttlSeconds: number): Promise<boolean> {
-        const response = await this.#client.eval(REDIS_UNKNOWN_SEND, {
+        const response = await this.#eval(REDIS_UNKNOWN_SEND, {
             keys: [ledgerKey(key)],
             arguments: [bodyHash, String(ttlSeconds)]
         });
         return response === 1;
+    }
+
+    async #eval(
+        script: string,
+        options: { keys: string[]; arguments: string[] }
+    ): Promise<unknown> {
+        if (!this.#availability.isAvailable()) {
+            throw sharedStoreUnavailable();
+        }
+        try {
+            return await this.#client.eval(script, options);
+        } catch {
+            this.#availability.markUnavailable();
+            throw sharedStoreUnavailable();
+        }
     }
 }
 
@@ -274,7 +359,8 @@ type RedisClientFactory = (options: { url: string }) => RedisClientLike;
 
 export async function createConfiguredStore(
     environment: Record<string, string | undefined>,
-    redisClientFactory: RedisClientFactory = (options) => createClient(options) as unknown as RedisClientLike
+    redisClientFactory: RedisClientFactory = (options) => createClient(options) as unknown as RedisClientLike,
+    reportRedisStatus: RedisStoreStatusReporter = defaultRedisStoreStatusReporter
 ): Promise<AtomicStateStore> {
     const mode = environment.MAIL_BRIDGE_REPLICA_MODE;
     if (mode === 'single') {
@@ -301,8 +387,22 @@ export async function createConfiguredStore(
             throw new Error('invalid redis origin');
         }
         const client = redisClientFactory({ url: redisUrl });
-        await client.connect();
-        return new RedisAtomicStore(client);
+        const availability = new RedisAvailability(reportRedisStatus);
+        client.on('error', () => availability.markUnavailable());
+        client.on('reconnecting', () => availability.markUnavailable());
+        client.on('end', () => availability.markUnavailable());
+        client.on('ready', () => availability.markAvailable());
+        try {
+            await client.connect();
+        } catch {
+            availability.markUnavailable();
+            throw sharedStoreUnavailable();
+        }
+        availability.markConnectedFallback();
+        if (!availability.isAvailable()) {
+            throw sharedStoreUnavailable();
+        }
+        return new RedisAtomicStore(client, availability);
     } catch {
         throw sharedStoreUnavailable();
     }

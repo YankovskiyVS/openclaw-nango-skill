@@ -544,6 +544,37 @@ describe('SMTP dispatch and atomic idempotency', () => {
         expect(smtp.sendMail).toHaveBeenCalledTimes(1);
     });
 
+    it('fails before SMTP dispatch when the shared idempotency store is unavailable', async () => {
+        const smtp = smtpHarness();
+        const store = {
+            consumeNonce: vi.fn(),
+            beginSend: vi.fn().mockRejectedValue(
+                new Error('redis://user:password@redis.internal:6379 is unavailable')
+            ),
+            confirmSend: vi.fn(),
+            markSendUnknown: vi.fn()
+        };
+        const service = new MailService({
+            store,
+            imapFactory: imapHarness().factory,
+            smtpFactory: smtp.factory
+        });
+
+        const result = await service.sendMessage(MAILBOX, TOKEN, payload, bodyHash);
+
+        expect(result).toEqual({
+            ok: false,
+            outcome: 'not_started',
+            error: {
+                code: 'idempotency_store_unavailable',
+                message: 'The send idempotency store is unavailable.',
+                retryable: true
+            }
+        });
+        expect(smtp.sendMail).not.toHaveBeenCalled();
+        expect(JSON.stringify(result)).not.toContain('password');
+    });
+
     it('returns unknown instead of confirmed if the shared ledger cannot record confirmation', async () => {
         const smtp = smtpHarness();
         const base = new InMemoryAtomicStore();

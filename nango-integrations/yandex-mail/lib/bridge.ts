@@ -271,18 +271,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function readConnection(value: unknown): { mailbox: string } | null {
-    if (!isRecord(value) || !isRecord(value.credentials) || !isRecord(value.connection_config)) {
+    if (!isRecord(value) || !isRecord(value['credentials']) || !isRecord(value['connection_config'])) {
         return null;
     }
-    const credentials = value.credentials;
+    const credentials = value['credentials'];
     if (
-        credentials.type !== 'OAUTH2' ||
-        typeof credentials.access_token !== 'string' ||
-        credentials.access_token.length === 0
+        credentials['type'] !== 'OAUTH2' ||
+        typeof credentials['access_token'] !== 'string' ||
+        credentials['access_token'].length === 0
     ) {
         return null;
     }
-    const parsedMailbox = mailboxSchema.safeParse(value.connection_config.mailbox);
+    const parsedMailbox = mailboxSchema.safeParse(value['connection_config']['mailbox']);
     return parsedMailbox.success ? { mailbox: parsedMailbox.data } : null;
 }
 
@@ -405,13 +405,13 @@ export async function callMailBridge<T extends z.ZodTypeAny>(input: {
     } catch (error) {
         if (
             isRecord(error) &&
-            isRecord(error.response) &&
-            Number.isInteger(error.response.status) &&
-            (error.response.status as number) >= 400 &&
-            (error.response.status as number) <= 599
+            isRecord(error['response']) &&
+            Number.isInteger(error['response']['status']) &&
+            (error['response']['status'] as number) >= 400 &&
+            (error['response']['status'] as number) <= 599
         ) {
-            const parsed = input.output.safeParse(error.response.data);
-            if (parsed.success && isRecord(parsed.data) && parsed.data.ok === false) {
+            const parsed = input.output.safeParse(error['response']['data']);
+            if (parsed.success && isRecord(parsed.data) && parsed.data['ok'] === false) {
                 return parsed.data;
             }
         }

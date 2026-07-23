@@ -54,6 +54,11 @@ Deploy it behind an exact HTTPS origin. Configure:
 
 Production replicas should use `multi` with a shared Redis ledger. `single`
 uses bounded process memory, so a restart loses replay and idempotency state.
+In `multi` mode the bridge emits safe JSON status transitions on stderr with
+component `mail_bridge_redis` and code `redis_ready` or
+`shared_store_unavailable`; raw Redis errors and the Redis URL are omitted.
+While unavailable, replay/idempotency operations fail closed before dispatch,
+and a later Redis `ready` event restores them.
 
 The bridge accepts only signed JSON POSTs on fixed routes. It pins outbound
 mail traffic to:
@@ -123,16 +128,17 @@ webhooks to the outbound Action.
 
 ## Compile
 
-The local tests above do not need Nango credentials. Nango CLI compilation
-does. Supply credentials through the operator environment or a protected
-secret provider; do not commit a `.env` file:
+Compilation is a credential-free checkout gate. It typechecks with Nango's
+canonical compiler options, bundles every declared action, and verifies the
+expected two integrations, five versioned actions, and five build artifacts:
 
 ```bash
 cd nango-integrations
-npx nango compile --no-dependency-update --no-telemetry
+npm run verify:nango
 ```
 
-Compilation writes local Nango build metadata. Review its diff before deploy.
+Compilation writes ignored local artifacts under `.nango/` and `build/`.
+It does not make provider calls, deploy actions, or require a Nango account.
 
 ## Dry run against explicit connections
 

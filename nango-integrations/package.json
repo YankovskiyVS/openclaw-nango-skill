@@ -9,7 +9,9 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json"
+    "build": "tsc -p tsconfig.build.json",
+    "compile:nango": "nango compile --no-dependency-update --no-telemetry --no-interactive",
+    "verify:nango": "npm run compile:nango && node test/assert-nango-compile.mjs"
   },
   "dependencies": {
     "nango": "0.71.2",

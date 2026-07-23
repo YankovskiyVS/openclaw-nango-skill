@@ -16,7 +16,7 @@ const receiverSchema = z
     })
     .strict();
 
-export const sendMessageInputSchema = z
+const sendMessageInputSchema = z
     .object({
         msgid: messageIdSchema,
         conversationId: idSchema,
@@ -113,7 +113,7 @@ const actionMetadataSchema = z
     })
     .passthrough();
 
-export const sendMessageOutputSchema = z.union([
+const sendMessageOutputSchema = z.union([
     z
         .object({
             ok: z.literal(true),
@@ -198,10 +198,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function documentedRejectionStatus(error: unknown): boolean {
-    if (!isRecord(error) || !isRecord(error.response)) {
+    if (!isRecord(error) || !isRecord(error['response'])) {
         return false;
     }
-    const status = error.response.status;
+    const status = error['response']['status'];
     return Number.isInteger(status) && (status === 400 || status === 403);
 }
 
