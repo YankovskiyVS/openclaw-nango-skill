@@ -213,6 +213,43 @@ describe("Action registry", () => {
       }),
     ).toMatchObject({ status: "blocked" });
   });
+
+  test.each(["x", "ü", "m".repeat(255)])(
+    "accepts provider amoCRM msgid %j with the same output contract as the Action",
+    (msgid) => {
+      const registration = resolveActionRegistration(
+        "amocrm-chats",
+        "send-message",
+      );
+
+      expect(
+        registration?.validateSuccessResult({
+          conversationId: "conversation-1",
+          senderId: "sender-1",
+          receiverId: "receiver-1",
+          msgid,
+          refId: "amo-message-001",
+        }),
+      ).toBe(true);
+    },
+  );
+
+  test("rejects an amoCRM provider msgid beyond the shared output bound", () => {
+    const registration = resolveActionRegistration(
+      "amocrm-chats",
+      "send-message",
+    );
+
+    expect(
+      registration?.validateSuccessResult({
+        conversationId: "conversation-1",
+        senderId: "sender-1",
+        receiverId: null,
+        msgid: "m".repeat(256),
+        refId: "amo-message-001",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("Action transport", () => {

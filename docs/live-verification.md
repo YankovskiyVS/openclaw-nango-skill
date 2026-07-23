@@ -125,7 +125,11 @@ The send Action must execute through internal integration
 `scope_id`, region, channel secret or sender identity.
 
 Send one text message with a unique `msgid`, then verify it in amoCRM. Do not
-automatically retry an `unknown` result.
+automatically retry an `unknown` result. Repeating the same `msgid` and body
+must return the cached confirmation without another provider request. Reusing
+the same `msgid` with different text must fail before dispatch. Also issue two
+concurrent calls with a dedicated test `msgid`; exactly one provider message
+may appear, while the competing call remains conservative.
 
 Inbound channel webhooks are outside this repository's implementation and are
 not part of this check.

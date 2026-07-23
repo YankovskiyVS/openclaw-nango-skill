@@ -11,8 +11,20 @@ The action serializes the JSON body once and signs those exact bytes with the
 amoCRM Chats channel HMAC contract. It pins the destination to
 `https://amojo.amocrm.ru` or `https://amojo.amocrm.com`, disables retries, and
 does not forward signed headers across redirects. Callers must provide a unique
-`msgid`; an `unknown` mutation result must be reconciled in the chat before a
-retry.
+`msgid`.
+
+Before dispatch, the action acquires a Nango execution lock and atomically
+records a hash of the stable message request in the dedicated connection's
+metadata. A confirmed result is cached, reuse of the same `msgid` with a
+different body fails before dispatch, and pending or unknown results stay
+unknown without another provider call. The bounded ledger retains entries for
+30 days and keeps at most 256 entries, evicting only the oldest confirmed
+entries when necessary. Never reuse an old `msgid`, including after that
+retention window. Do not let another function write the
+`openclawAmoSendLedgerV1` metadata field without using the same lock protocol.
+
+An `unknown` mutation result must be reconciled in the chat; calling the action
+again with the same `msgid` intentionally does not dispatch again.
 
 Expected custom connection fields:
 

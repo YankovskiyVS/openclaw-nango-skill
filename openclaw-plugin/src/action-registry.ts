@@ -640,7 +640,8 @@ function validateSendAmoResult(value: unknown): value is JsonValue {
       (typeof value.receiverId === "string" &&
         idOutput(value.receiverId, 1, 255))) &&
     typeof value.msgid === "string" &&
-    idOutput(value.msgid, 8, 128) &&
+    value.msgid.length >= 1 &&
+    value.msgid.length <= 255 &&
     typeof value.refId === "string" &&
     idOutput(value.refId, 8, 128)
   );

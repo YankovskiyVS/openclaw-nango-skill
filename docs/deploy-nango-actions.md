@@ -109,6 +109,14 @@ The resulting signature is lowercase HMAC-SHA1. Requests are restricted to
 the code-selected `amojo.amocrm.ru` or `amojo.amocrm.com` origin and use zero
 automatic retries.
 
+The send action uses Nango's shared execution lock plus the dedicated
+connection's `openclawAmoSendLedgerV1` metadata field as its result ledger.
+Keep that field action-owned. A repeated identical `msgid` returns the cached
+confirmation, a different body conflicts before dispatch, and pending or
+unknown state never triggers a second provider call. Entries are retained for
+30 days in a bounded 256-entry ledger; generate globally unique message ids and
+never reuse one after retention or eviction.
+
 Receiving amoCRM channel webhooks is not implemented here. A receiver needs a
 separate raw-body HMAC-SHA1 verification boundary; do not route inbound
 webhooks to the outbound Action.

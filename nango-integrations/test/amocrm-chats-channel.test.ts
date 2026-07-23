@@ -61,14 +61,43 @@ function providerResponse(overrides: Record<string, unknown> = {}) {
 
 function nangoMock(options: {
     connection?: unknown;
+    metadata?: unknown;
     response?: unknown;
     postError?: unknown;
+    setMetadataErrorAtCall?: number;
 } = {}) {
+    let metadata: unknown = options.metadata ?? {};
+    let lockHeld = false;
+    let setMetadataCalls = 0;
     const post = options.postError
         ? vi.fn().mockRejectedValue(options.postError)
         : vi.fn().mockResolvedValue({ data: options.response ?? providerResponse() });
     return {
+        connectionId: 'amo-channel-connection-1',
         getConnection: vi.fn().mockResolvedValue(options.connection ?? connection()),
+        getMetadata: vi.fn(async () => structuredClone(metadata)),
+        updateMetadata: vi.fn(async (value: unknown) => {
+            setMetadataCalls += 1;
+            if (setMetadataCalls === options.setMetadataErrorAtCall) {
+                throw new Error('shared metadata unavailable');
+            }
+            metadata = {
+                ...(typeof metadata === 'object' && metadata !== null ? metadata : {}),
+                ...(typeof value === 'object' && value !== null ? structuredClone(value) : {})
+            };
+            return {};
+        }),
+        tryAcquireLock: vi.fn(async () => {
+            if (lockHeld) {
+                return false;
+            }
+            lockHeld = true;
+            return true;
+        }),
+        releaseLock: vi.fn(async () => {
+            lockHeld = false;
+            return true;
+        }),
         post
     };
 }
@@ -158,6 +187,25 @@ describe('action identity, boundary and schemas', () => {
             expect(parsed.data.silent).toBe(false);
         }
     });
+
+    it.each(['x', 'ü', 'm'.repeat(255)])(
+        'accepts provider message id %j consistently through the action output contract',
+        (providerMessageId) => {
+            const parsed = sendMessageAction.output.safeParse({
+                ok: true,
+                outcome: 'confirmed',
+                result: {
+                    conversationId: 'conversation-1',
+                    senderId: 'bot-1',
+                    receiverId: 'client-1',
+                    msgid: providerMessageId,
+                    refId: validInput.msgid
+                }
+            });
+
+            expect(parsed.success).toBe(true);
+        }
+    );
 
     it.each([
         'scopeId',
@@ -400,5 +448,87 @@ describe('fixed internal connection and outbound transport', () => {
             error: { code: 'amocrm_chats_response_invalid' }
         });
         expect(JSON.stringify(result)).not.toContain(CHANNEL_SECRET);
+    });
+});
+
+describe('shared amoCRM send idempotency ledger', () => {
+    it('returns the cached confirmed result without a second dispatch', async () => {
+        const nango = nangoMock();
+
+        const first = await sendMessageAction.exec(nango as never, validInput);
+        const second = await sendMessageAction.exec(nango as never, validInput);
+
+        expect(first).toEqual(second);
+        expect(first).toMatchObject({ ok: true, outcome: 'confirmed' });
+        expect(nango.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects reuse of one msgid for a different message body', async () => {
+        const nango = nangoMock();
+
+        await sendMessageAction.exec(nango as never, validInput);
+        const result = await sendMessageAction.exec(nango as never, {
+            ...validInput,
+            text: 'Different text'
+        });
+
+        expect(result).toMatchObject({
+            ok: false,
+            outcome: 'not_started',
+            error: { code: 'amocrm_chats_idempotency_conflict' }
+        });
+        expect(nango.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps an unknown dispatch sticky across a sequential retry', async () => {
+        const nango = nangoMock({
+            postError: new Error('connection reset after dispatch')
+        });
+
+        const first = await sendMessageAction.exec(nango as never, validInput);
+        nango.post.mockResolvedValue({ data: providerResponse() });
+        const second = await sendMessageAction.exec(nango as never, validInput);
+
+        expect(first).toMatchObject({ ok: false, outcome: 'unknown' });
+        expect(second).toMatchObject({
+            ok: false,
+            outcome: 'unknown',
+            error: { code: 'amocrm_chats_outcome_unknown' }
+        });
+        expect(nango.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('dispatches only once for concurrent calls with the same msgid', async () => {
+        let releaseProvider!: (value: { data: unknown }) => void;
+        const providerPending = new Promise<{ data: unknown }>((resolvePromise) => {
+            releaseProvider = resolvePromise;
+        });
+        const nango = nangoMock();
+        nango.post.mockImplementationOnce(() => providerPending);
+
+        const firstPending = sendMessageAction.exec(nango as never, validInput);
+        await vi.waitFor(() => expect(nango.post).toHaveBeenCalledTimes(1));
+        const concurrent = await sendMessageAction.exec(nango as never, validInput);
+        releaseProvider({ data: providerResponse() });
+        const first = await firstPending;
+
+        expect(first).toMatchObject({ ok: true, outcome: 'confirmed' });
+        expect(concurrent).toMatchObject({
+            ok: false,
+            outcome: 'unknown',
+            error: { code: 'amocrm_chats_outcome_unknown' }
+        });
+        expect(nango.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('makes a failed post-dispatch ledger transition sticky unknown', async () => {
+        const nango = nangoMock({ setMetadataErrorAtCall: 2 });
+
+        const first = await sendMessageAction.exec(nango as never, validInput);
+        const second = await sendMessageAction.exec(nango as never, validInput);
+
+        expect(first).toMatchObject({ ok: false, outcome: 'unknown' });
+        expect(second).toMatchObject({ ok: false, outcome: 'unknown' });
+        expect(nango.post).toHaveBeenCalledTimes(1);
     });
 });
