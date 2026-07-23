@@ -9,6 +9,21 @@ import pytest
 from _shared.scripts import nango_proxy
 
 
+class _TrackingByteStream(httpx.SyncByteStream):
+    def __init__(self, chunks: list[bytes]) -> None:
+        self._chunks = chunks
+        self.chunks_read = 0
+        self.closed = False
+
+    def __iter__(self):
+        for chunk in self._chunks:
+            self.chunks_read += 1
+            yield chunk
+
+    def close(self) -> None:
+        self.closed = True
+
+
 def _install_mock_transport(
     monkeypatch: pytest.MonkeyPatch,
     handler: Callable[[httpx.Request], httpx.Response],
@@ -537,7 +552,7 @@ def test_binary_response_is_summarized_with_full_sha256(
     assert "private-binary" not in output
 
 
-def test_oversized_text_response_is_capped(
+def test_oversized_text_response_is_rejected_without_exposing_body(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -555,14 +570,15 @@ def test_oversized_text_response_is_capped(
     _install_mock_transport(monkeypatch, handler)
     _set_call_environment(monkeypatch)
 
-    assert nango_proxy.cmd_call(_parse_call_args("--json-output")) == 0
+    assert nango_proxy.cmd_call(_parse_call_args("--json-output")) == 1
 
     output = capsys.readouterr().out
-    assert json.loads(output)["response"]["body"] == {
-        "kind": "text",
-        "size": len(response_body),
-        "text": "01234567",
-        "truncated": True,
+    assert json.loads(output)["error"] == {
+        "layer": "unknown_upstream",
+        "code": "invalid_response",
+        "message": "Upstream response could not be parsed",
+        "status": 200,
+        "retryable": False,
     }
     assert "must-not-appear" not in output
 
@@ -602,7 +618,7 @@ def test_plain_output_cap_counts_utf8_replacement_status_and_newlines(
     assert "plain-tail-secret" not in output
 
 
-def test_oversized_json_response_is_summarized_without_parsing(
+def test_oversized_json_response_is_rejected_without_parsing(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -620,17 +636,76 @@ def test_oversized_json_response_is_summarized_without_parsing(
     _install_mock_transport(monkeypatch, handler)
     _set_call_environment(monkeypatch)
 
-    assert nango_proxy.cmd_call(_parse_call_args("--json-output")) == 0
+    assert nango_proxy.cmd_call(_parse_call_args("--json-output")) == 1
 
     output = capsys.readouterr().out
-    assert json.loads(output)["response"]["body"] == {
-        "kind": "json",
-        "size": len(response_body),
-        "contentType": "application/json",
-        "sha256": hashlib.sha256(response_body).hexdigest(),
-        "truncated": True,
+    assert json.loads(output)["error"] == {
+        "layer": "unknown_upstream",
+        "code": "invalid_response",
+        "message": "Upstream response could not be parsed",
+        "status": 200,
+        "retryable": False,
     }
     assert "must-not-appear" not in output
+
+
+def test_oversized_http_error_preserves_status_and_retryability(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(nango_proxy, "MAX_RESPONSE_BYTES", 8)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            503,
+            content=b"oversized-upstream-error",
+            headers={"content-type": "text/plain"},
+            request=request,
+        )
+
+    _install_mock_transport(monkeypatch, handler)
+    _set_call_environment(monkeypatch)
+
+    assert nango_proxy.cmd_call(_parse_call_args("--json-output")) == 1
+
+    output = capsys.readouterr().out
+    assert json.loads(output)["error"] == {
+        "layer": "unknown_upstream",
+        "code": "upstream_http_error",
+        "message": "Upstream request failed",
+        "status": 503,
+        "retryable": True,
+    }
+
+
+def test_oversized_redirect_response_remains_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(nango_proxy, "MAX_RESPONSE_BYTES", 8)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            302,
+            content=b"oversized-redirect-body",
+            headers={"location": "https://attacker.example/"},
+            request=request,
+        )
+
+    _install_mock_transport(monkeypatch, handler)
+    _set_call_environment(monkeypatch)
+
+    assert nango_proxy.cmd_call(_parse_call_args("--json-output")) == 1
+
+    output = capsys.readouterr().out
+    assert json.loads(output)["error"] == {
+        "layer": "unknown_upstream",
+        "code": "redirect_blocked",
+        "message": "Credentialed redirect was blocked",
+        "status": 302,
+        "retryable": False,
+    }
+    assert "attacker.example" not in output
 
 
 def test_validation_error_is_structured_and_never_dispatches(
@@ -1480,7 +1555,7 @@ def test_health_rejects_invalid_proxy_url_before_dispatch(
     assert "health-url-secret" not in captured.err
 
 
-def test_health_response_is_bounded_and_redirects_are_disabled(
+def test_oversized_health_response_is_rejected_and_redirects_are_disabled(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -1500,12 +1575,90 @@ def test_health_response_is_bounded_and_redirects_are_disabled(
         ["--proxy-url", "https://proxy.example", "health"]
     )
 
-    assert nango_proxy.cmd_health(args) == 0
+    assert nango_proxy.cmd_health(args) == 1
 
     output = capsys.readouterr().out
     assert client_options[0]["follow_redirects"] is False
-    assert len(output.encode("utf-8")) <= 8
+    assert (
+        "ERROR unknown_upstream/invalid_response: Health response is invalid"
+        in output
+    )
     assert "health-tail-secret" not in output
+
+
+@pytest.mark.parametrize("command", ["call", "health"])
+def test_oversized_response_stream_stops_at_limit_and_closes(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+) -> None:
+    monkeypatch.setattr(nango_proxy, "MAX_RESPONSE_BYTES", 8)
+    stream = _TrackingByteStream(
+        [b"1234", b"5678", b"9", b"stream-tail-secret"]
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            stream=stream,
+            headers={"content-type": "text/plain; charset=utf-8"},
+            request=request,
+        )
+
+    _install_mock_transport(monkeypatch, handler)
+    _set_call_environment(monkeypatch)
+    if command == "call":
+        exit_code = nango_proxy.cmd_call(_parse_call_args("--json-output"))
+    else:
+        args = nango_proxy.build_parser().parse_args(
+            ["--proxy-url", "https://proxy.example", "health"]
+        )
+        exit_code = nango_proxy.cmd_health(args)
+
+    assert exit_code == 1
+    assert stream.chunks_read == 3
+    assert stream.closed is True
+    captured = capsys.readouterr()
+    assert "stream-tail-secret" not in captured.out
+    assert "stream-tail-secret" not in captured.err
+
+
+@pytest.mark.parametrize("command", ["call", "health"])
+def test_oversized_content_length_is_rejected_before_body_read(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+) -> None:
+    monkeypatch.setattr(nango_proxy, "MAX_RESPONSE_BYTES", 8)
+    stream = _TrackingByteStream([b"must-not-be-read"])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            stream=stream,
+            headers={
+                "content-length": "9",
+                "content-type": "text/plain; charset=utf-8",
+            },
+            request=request,
+        )
+
+    _install_mock_transport(monkeypatch, handler)
+    _set_call_environment(monkeypatch)
+    if command == "call":
+        exit_code = nango_proxy.cmd_call(_parse_call_args("--json-output"))
+    else:
+        args = nango_proxy.build_parser().parse_args(
+            ["--proxy-url", "https://proxy.example", "health"]
+        )
+        exit_code = nango_proxy.cmd_health(args)
+
+    assert exit_code == 1
+    assert stream.chunks_read == 0
+    assert stream.closed is True
+    captured = capsys.readouterr()
+    assert "must-not-be-read" not in captured.out
+    assert "must-not-be-read" not in captured.err
 
 
 def test_oversized_allowlisted_response_header_is_omitted(
