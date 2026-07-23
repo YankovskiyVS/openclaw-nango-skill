@@ -92,7 +92,11 @@ It proves:
 - amoCRM Chats signs the exact outgoing body and records pending, confirmed,
   cached, conflict, and sticky unknown outcomes;
 - Redis startup, outage, reconnect, eval failure, and connect/end race paths
-  fail closed without accidental provider dispatch.
+  fail closed without accidental provider dispatch;
+- the dedicated Redis 7.4 service gate uses two independent production
+  `createConfiguredStore` paths and real Lua `EVAL` responses to exercise
+  atomic nonce consumption, concurrent begin, conflict, confirm-to-cache,
+  mismatched transitions, and sticky unknown state.
 
 Fresh checkout results:
 
@@ -161,7 +165,8 @@ results without exposing secrets.
 
 Production dependency audits report zero known vulnerabilities in the root
 workspace, Nango package, and mail bridge. The local Docker daemon was not
-available, so the container build remains a GitHub Actions gate.
+available, and no local Redis server was installed, so the container build and
+real Redis/Lua compatibility test remain GitHub Actions gates.
 
 ## Final regression gate
 
@@ -197,7 +202,11 @@ npm run build
 cd ../nango-integrations
 npm run test:e2e
 npm run typecheck:e2e
+
+# With a dedicated disposable Redis listening on this exact test URL:
+cd ../mail-bridge
+MAIL_BRIDGE_TEST_REDIS_URL=redis://127.0.0.1:6379 npm run test:redis
 ```
 
-The GitHub Actions run is the Docker build gate when a local Docker daemon is
-not available.
+The GitHub Actions run supplies the disposable Redis service and is also the
+Docker build gate when those local services are unavailable.
