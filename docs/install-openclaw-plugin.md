@@ -131,6 +131,34 @@ That endpoint is a separate backend capability. It must implement the exact
 request and response contract documented by the plugin. Do not point this
 setting at the ordinary provider proxy and assume it supports Actions.
 
+The plugin sends one JSON `POST` with `Authorization: Api-Key <cloudru key>`
+and this exact body shape:
+
+```json
+{
+  "projectId": "<configured project id>",
+  "evoClawId": "<configured EvoClaw id>",
+  "connectionId": "project-<project id>-evoclaw-<EvoClaw id>",
+  "providerConfigKey": "<code-selected internal integration id>",
+  "actionName": "<registered action name>",
+  "input": {}
+}
+```
+
+The backend response must be JSON in one of these two shapes:
+
+```json
+{"ok":true,"result":{"ok":true,"outcome":"confirmed","result":{}}}
+```
+
+```json
+{"ok":false,"error":{"layer":"cloudru_proxy","code":"stable_code","message":"Safe bounded message","retryable":false}}
+```
+
+The endpoint must not redirect. The plugin bounds and validates the complete
+response, promotes an Action business failure to the tool's top-level failure
+outcome, and never returns configured secrets or arbitrary response headers.
+
 Direct mode is an explicit operator-controlled fallback:
 
 ```json5
