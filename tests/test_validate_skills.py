@@ -188,3 +188,22 @@ def test_validator_requires_canonical_shared_asset_bytes_and_modes(tmp_path):
         "non-canonical mode references/api-reference.md",
     ):
         assert marker in output
+
+
+def test_validator_rejects_bash_or_catalog_drift_in_endpoint_references(tmp_path):
+    root = _make_generated_repository(tmp_path)
+    endpoints = (
+        root / "skills" / "yandex-id" / "references" / "endpoints.md"
+    )
+    endpoints.write_text(
+        endpoints.read_text(encoding="utf-8")
+        + "\n```bash\npython3 unsafe.py\n```\n",
+        encoding="utf-8",
+    )
+
+    result = _run_validator(root)
+
+    assert result.returncode == 1
+    output = result.stdout + result.stderr
+    assert "endpoints.md does not match the structured catalog" in output
+    assert "endpoints.md must contain typed calls, not bash" in output

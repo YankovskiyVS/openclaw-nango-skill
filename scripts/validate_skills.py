@@ -17,12 +17,23 @@ from generate_skills import (
     ROOT,
     _trigger_phrase,
     load_catalog,
+    render_endpoints,
 )
 
 
 SUPPORTED_FRONTMATTER = {"name", "description", "metadata"}
 JSON_ARGUMENT = re.compile(r"--json '([^']*)'")
 BASEDIR_REFERENCE = re.compile(r"`\{baseDir\}/([^`]+)`")
+ENDPOINT_LABELS = (
+    "**Operation name:**",
+    "**Method:**",
+    "**Path:**",
+    "**Request shape:**",
+    "**Pagination:**",
+    "**Mutability:**",
+    "**Verification:**",
+    "**Authoritative docs:**",
+)
 
 
 def _frontmatter(text, skill_id, errors):
@@ -197,10 +208,11 @@ def _validate_package(entry, errors):
                 "{}: missing reference {{baseDir}}/{}".format(skill_id, relative)
             )
 
+    endpoints_path = package / "references" / "endpoints.md"
     markdown_paths = (
         package / "SKILL.md",
         package / "references" / "api-reference.md",
-        package / "references" / "endpoints.md",
+        endpoints_path,
     )
     for markdown in markdown_paths:
         for line in markdown.read_text(encoding="utf-8").splitlines():
@@ -214,23 +226,56 @@ def _validate_package(entry, errors):
                 )
         _validate_embedded_json(markdown, errors)
 
-    endpoints = (
-        package / "references" / "endpoints.md"
-    ).read_text(encoding="utf-8")
-    for operation in entry["operations"]:
-        command = "python3 {{baseDir}}/scripts/nango_proxy.py {}".format(
-            operation["command"]
-        )
-        if command not in skill_text:
-            errors.append(
-                "{}: SKILL.md is missing catalog operation {}".format(
-                    skill_id, operation["title"]
-                )
+    endpoints = endpoints_path.read_text(encoding="utf-8")
+    if endpoints != render_endpoints(entry):
+        errors.append(
+            "{}: endpoints.md does not match the structured catalog".format(
+                skill_id
             )
-        if command not in endpoints:
+        )
+    if "```bash" in endpoints or "python3 " in endpoints:
+        errors.append(
+            "{}: endpoints.md must contain typed calls, not bash".format(
+                skill_id
+            )
+        )
+    for operation in entry["operations"]:
+        if "command" in operation:
+            command = "python3 {{baseDir}}/scripts/nango_proxy.py {}".format(
+                operation["command"]
+            )
+            if command not in skill_text:
+                errors.append(
+                    "{}: SKILL.md is missing legacy catalog operation {}".format(
+                        skill_id, operation["title"]
+                    )
+                )
+        marker = "### {}".format(operation["title"])
+        start = endpoints.find(marker)
+        if start == -1:
             errors.append(
                 "{}: endpoints.md is missing catalog operation {}".format(
                     skill_id, operation["title"]
+                )
+            )
+            continue
+        next_start = endpoints.find("\n### ", start + len(marker))
+        section = endpoints[start : next_start if next_start != -1 else None]
+        for label in ENDPOINT_LABELS:
+            if label not in section:
+                errors.append(
+                    "{}: endpoint operation {} is missing {}".format(
+                        skill_id, operation["title"], label
+                    )
+                )
+        if operation["tool"] is None:
+            expected = "#### Non-executable boundary"
+        else:
+            expected = "#### Typed tool call"
+        if expected not in section:
+            errors.append(
+                "{}: endpoint operation {} is missing {}".format(
+                    skill_id, operation["title"], expected
                 )
             )
 

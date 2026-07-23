@@ -69,6 +69,69 @@ REQUIRED_ENV = (
     "EVOCLAW_ID",
     "CLOUDRU_API_KEY",
 )
+OPERATION_REQUIRED_FIELDS = {
+    "title",
+    "availability",
+    "tool",
+    "method",
+    "path",
+    "pagination",
+    "operation_kind",
+    "verification",
+    "docs",
+}
+OPERATION_OPTIONAL_FIELDS = {
+    "command",
+    "query",
+    "headers",
+    "json_body",
+    "text_body",
+    "content_type",
+    "action_name",
+    "action_input",
+    "transfer",
+}
+OPERATION_AVAILABILITY = {
+    "ready",
+    "template",
+    "unsupported",
+    "blocked_contract",
+}
+TYPED_TOOLS = {
+    "nango_proxy_request",
+    "nango_proxy_paginate",
+    "nango_action",
+    "nango_disk_transfer",
+}
+REGISTERED_ACTION_KINDS = {
+    ("yandex-mail", "resolve-mailbox"): "read",
+    ("yandex-mail", "list-messages"): "read",
+    ("yandex-mail", "get-message"): "read",
+    ("yandex-mail", "send-message"): "mutation",
+    ("amocrm-chats", "send-message"): "mutation",
+}
+RECORDED_AUTHORITATIVE_DOC_URLS = {
+    "https://yandex.com/dev/disk/api/concepts/about.html",
+}
+HTTP_METHODS = {
+    "GET",
+    "HEAD",
+    "OPTIONS",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "PROPFIND",
+    "REPORT",
+}
+PAGINATION_SOURCE_MODES = {
+    "none",
+    "single",
+    "offset",
+    "body-offset",
+    "link",
+    "action-window",
+}
 
 PAGINATION_MODES = {
     "yandex-disk": "offset",
@@ -140,6 +203,333 @@ def _request_from_command(command):
 
 def _json_lines(value):
     return json.dumps(value, ensure_ascii=False, indent=2).splitlines()
+
+
+def _validate_string(value, label, skill_id):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("{} {} must be a non-empty string".format(skill_id, label))
+
+
+def _validate_pagination(skill_id, operation):
+    pagination = operation["pagination"]
+    if not isinstance(pagination, dict):
+        raise ValueError("{} operation pagination must be an object".format(skill_id))
+    mode = pagination.get("mode")
+    if mode not in PAGINATION_SOURCE_MODES:
+        raise ValueError(
+            "{} operation has unsupported pagination mode".format(skill_id)
+        )
+    if mode == "none":
+        expected = {"mode"}
+    elif mode == "action-window":
+        expected = {
+            "mode",
+            "page_limit",
+            "max_items",
+            "continuation",
+        }
+        if (
+            type(pagination.get("page_limit")) is not int
+            or pagination["page_limit"] < 1
+            or type(pagination.get("max_items")) is not int
+            or pagination["max_items"] < 1
+        ):
+            raise ValueError(
+                "{} action-window bounds must be positive integers".format(
+                    skill_id
+                )
+            )
+        _validate_string(
+            pagination.get("continuation"),
+            "pagination continuation",
+            skill_id,
+        )
+    else:
+        expected = {"mode", "max_pages", "max_items"}
+        if (
+            type(pagination.get("max_pages")) is not int
+            or pagination["max_pages"] < 1
+            or type(pagination.get("max_items")) is not int
+            or pagination["max_items"] < 1
+        ):
+            raise ValueError(
+                "{} pagination bounds must be positive integers".format(skill_id)
+            )
+    if set(pagination) != expected:
+        raise ValueError(
+            "{} pagination fields do not match mode {}".format(skill_id, mode)
+        )
+    return mode
+
+
+def _validate_docs(skill_id, operation):
+    docs = operation["docs"]
+    if not isinstance(docs, dict) or set(docs) != {"status", "url"}:
+        raise ValueError(
+            "{} operation docs require only status and url".format(skill_id)
+        )
+    if docs["status"] == "verified":
+        if not isinstance(docs["url"], str) or not docs["url"].startswith(
+            "https://"
+        ):
+            raise ValueError(
+                "{} verified docs require an https URL".format(skill_id)
+            )
+        if docs["url"] not in RECORDED_AUTHORITATIVE_DOC_URLS:
+            raise ValueError(
+                "{} verified docs URL is not recorded in the repository".format(
+                    skill_id
+                )
+            )
+    elif docs["status"] == "not_verified":
+        if docs["url"] is not None:
+            raise ValueError(
+                "{} not_verified docs must use a null URL".format(skill_id)
+            )
+    else:
+        raise ValueError(
+            "{} operation docs status must be verified or not_verified".format(
+                skill_id
+            )
+        )
+
+
+def _validate_query(skill_id, query):
+    if not isinstance(query, list):
+        raise ValueError("{} operation query must be a list".format(skill_id))
+    for pair in query:
+        if (
+            not isinstance(pair, dict)
+            or set(pair) != {"name", "value"}
+            or not isinstance(pair["name"], str)
+            or not pair["name"]
+            or not isinstance(pair["value"], str)
+        ):
+            raise ValueError(
+                "{} operation query requires string name/value pairs".format(
+                    skill_id
+                )
+            )
+
+
+def _validate_operation(skill_id, operation, allowed_providers):
+    if not isinstance(operation, dict):
+        raise ValueError("{} operations must be objects".format(skill_id))
+    missing = OPERATION_REQUIRED_FIELDS - set(operation)
+    unknown = set(operation) - OPERATION_REQUIRED_FIELDS - OPERATION_OPTIONAL_FIELDS
+    if missing:
+        raise ValueError(
+            "{} operation is missing fields: {}".format(
+                skill_id, ", ".join(sorted(missing))
+            )
+        )
+    if unknown:
+        raise ValueError(
+            "{} operation has unsupported fields: {}".format(
+                skill_id, ", ".join(sorted(unknown))
+            )
+        )
+
+    _validate_string(operation["title"], "operation title", skill_id)
+    _validate_string(
+        operation["verification"], "operation verification", skill_id
+    )
+    availability = operation["availability"]
+    if availability not in OPERATION_AVAILABILITY:
+        raise ValueError(
+            "{} operation has unsupported availability".format(skill_id)
+        )
+    operation_kind = operation["operation_kind"]
+    if operation_kind not in {"read", "mutation", "unsupported"}:
+        raise ValueError(
+            "{} operation has unsupported operation_kind".format(skill_id)
+        )
+    if (availability == "unsupported") != (operation_kind == "unsupported"):
+        raise ValueError(
+            "{} unsupported availability and operation_kind must agree".format(
+                skill_id
+            )
+        )
+
+    tool = operation["tool"]
+    if availability in {"ready", "template"}:
+        if tool not in TYPED_TOOLS:
+            raise ValueError(
+                "{} executable/template operation requires a typed tool".format(
+                    skill_id
+                )
+            )
+    elif tool is not None:
+        raise ValueError(
+            "{} non-executable operation must not declare a tool".format(skill_id)
+        )
+
+    mode = _validate_pagination(skill_id, operation)
+    _validate_docs(skill_id, operation)
+
+    method = operation["method"]
+    path = operation["path"]
+    if tool in {"nango_proxy_request", "nango_proxy_paginate"}:
+        if method not in HTTP_METHODS:
+            raise ValueError(
+                "{} proxy operation requires a supported method".format(skill_id)
+            )
+        _validate_string(path, "operation path", skill_id)
+        if tool == "nango_proxy_request" and mode != "none":
+            raise ValueError(
+                "{} request operation cannot declare pagination".format(skill_id)
+            )
+        if tool == "nango_proxy_paginate" and mode not in {
+            "single",
+            "offset",
+            "body-offset",
+            "link",
+        }:
+            raise ValueError(
+                "{} paginate operation requires a registered mode".format(skill_id)
+            )
+    elif tool in {"nango_action", "nango_disk_transfer"}:
+        if method is not None or path is not None:
+            raise ValueError(
+                "{} action/transfer method and path must be null".format(skill_id)
+            )
+    else:
+        if method is not None and method not in HTTP_METHODS:
+            raise ValueError(
+                "{} boundary method must be null or supported".format(skill_id)
+            )
+        if path is not None:
+            _validate_string(path, "boundary path", skill_id)
+
+    if "query" in operation:
+        _validate_query(skill_id, operation["query"])
+    if "headers" in operation and (
+        not isinstance(operation["headers"], dict)
+        or not all(
+            isinstance(name, str)
+            and name
+            and isinstance(value, str)
+            for name, value in operation["headers"].items()
+        )
+    ):
+        raise ValueError(
+            "{} operation headers must be string pairs".format(skill_id)
+        )
+    if "text_body" in operation and not isinstance(
+        operation["text_body"], str
+    ):
+        raise ValueError("{} operation text_body must be a string".format(skill_id))
+    if "content_type" in operation:
+        _validate_string(
+            operation["content_type"], "operation content_type", skill_id
+        )
+        if "text_body" not in operation:
+            raise ValueError(
+                "{} operation content_type requires text_body".format(skill_id)
+            )
+    if "json_body" in operation and "text_body" in operation:
+        raise ValueError(
+            "{} operation cannot mix json_body and text_body".format(skill_id)
+        )
+
+    proxy_only = {
+        "query",
+        "headers",
+        "json_body",
+        "text_body",
+        "content_type",
+    }
+    action_only = {"action_name", "action_input"}
+    if tool in {"nango_proxy_request", "nango_proxy_paginate"}:
+        if set(operation) & (action_only | {"transfer"}):
+            raise ValueError(
+                "{} proxy operation mixes typed surface fields".format(skill_id)
+            )
+    elif tool == "nango_action":
+        if set(operation) & (proxy_only | {"transfer"}):
+            raise ValueError(
+                "{} action operation mixes typed surface fields".format(skill_id)
+            )
+        _validate_string(operation.get("action_name"), "action_name", skill_id)
+        if not isinstance(operation.get("action_input"), dict):
+            raise ValueError(
+                "{} action operation requires an input object".format(skill_id)
+            )
+        expected_kind = REGISTERED_ACTION_KINDS.get(
+            (skill_id, operation["action_name"])
+        )
+        if expected_kind is None or operation_kind != expected_kind:
+            raise ValueError(
+                "{} action is not registered with this operation_kind".format(
+                    skill_id
+                )
+            )
+        if mode not in {"none", "action-window"}:
+            raise ValueError(
+                "{} action operation has invalid pagination".format(skill_id)
+            )
+    elif tool == "nango_disk_transfer":
+        if set(operation) & (proxy_only | action_only):
+            raise ValueError(
+                "{} transfer operation mixes typed surface fields".format(skill_id)
+            )
+        transfer = operation.get("transfer")
+        if not isinstance(transfer, dict) or set(transfer) != {
+            "direction",
+            "localPath",
+            "remotePath",
+            "overwrite",
+        }:
+            raise ValueError(
+                "{} transfer operation has an invalid request shape".format(skill_id)
+            )
+        if transfer["direction"] not in {"upload", "download"}:
+            raise ValueError(
+                "{} transfer direction must be upload or download".format(skill_id)
+            )
+        for field in ("localPath", "remotePath"):
+            _validate_string(transfer[field], "transfer {}".format(field), skill_id)
+        if type(transfer["overwrite"]) is not bool:
+            raise ValueError(
+                "{} transfer overwrite must be boolean".format(skill_id)
+            )
+        if mode != "none":
+            raise ValueError(
+                "{} transfer operation cannot paginate".format(skill_id)
+            )
+        if skill_id != "yandex-disk" or operation_kind != "mutation":
+            raise ValueError(
+                "{} transfer is not registered for this operation".format(
+                    skill_id
+                )
+            )
+    elif set(operation) & (proxy_only | action_only | {"transfer"}):
+        raise ValueError(
+            "{} non-executable boundary cannot contain a request body".format(
+                skill_id
+            )
+        )
+
+    command_text = operation.get("command")
+    if command_text is None:
+        return
+    _validate_string(command_text, "legacy command", skill_id)
+    command = shlex.split(command_text)
+    if len(command) < 3 or command[0] != "call":
+        raise ValueError("{} operation is not a call command".format(skill_id))
+    if command[1] not in allowed_providers:
+        raise ValueError(
+            "{} operation uses undeclared provider {}".format(
+                skill_id, command[1]
+            )
+        )
+    for index, argument in enumerate(command):
+        if argument == "--json":
+            if index + 1 == len(command):
+                raise ValueError(
+                    "{} operation has no --json value".format(skill_id)
+                )
+            json.loads(command[index + 1])
 
 
 def _generic_plugin_example(entry):
@@ -432,6 +822,17 @@ def load_catalog(path=CATALOG_PATH):
     entries = document.get("skills")
     if not isinstance(entries, list) or len(entries) != EXPECTED_SKILL_COUNT:
         raise ValueError("catalog must contain exactly 25 skills")
+    if any(not isinstance(entry, dict) for entry in entries):
+        raise ValueError("each catalog skill must be an object")
+    if tuple(entry.get("id") for entry in entries) != EXPECTED_SKILL_IDS:
+        raise ValueError("catalog must contain the exact ordered skill ids")
+    if (
+        tuple(entry.get("provider_config_key") for entry in entries)
+        != EXPECTED_SKILL_IDS
+    ):
+        raise ValueError(
+            "catalog must contain the exact ordered provider_config_key values"
+        )
 
     required = {
         "id",
@@ -450,8 +851,6 @@ def load_catalog(path=CATALOG_PATH):
     provider_keys = []
     aliases = []
     for entry in entries:
-        if not isinstance(entry, dict):
-            raise ValueError("each catalog skill must be an object")
         missing = required - set(entry)
         if missing:
             raise ValueError(
@@ -481,26 +880,7 @@ def load_catalog(path=CATALOG_PATH):
             raise ValueError("{} must declare at least one operation".format(skill_id))
         allowed_providers = {provider_key, *declared_aliases}
         for operation in operations:
-            if set(operation) != {"title", "command"}:
-                raise ValueError(
-                    "{} operations require only title and command".format(skill_id)
-                )
-            command = shlex.split(operation["command"])
-            if len(command) < 3 or command[0] != "call":
-                raise ValueError("{} operation is not a call command".format(skill_id))
-            if command[1] not in allowed_providers:
-                raise ValueError(
-                    "{} operation uses undeclared provider {}".format(
-                        skill_id, command[1]
-                    )
-                )
-            for index, argument in enumerate(command):
-                if argument == "--json":
-                    if index + 1 == len(command):
-                        raise ValueError(
-                            "{} operation has no --json value".format(skill_id)
-                        )
-                    json.loads(command[index + 1])
+            _validate_operation(skill_id, operation, allowed_providers)
 
     if tuple(ids) != EXPECTED_SKILL_IDS:
         raise ValueError("catalog must contain the exact ordered skill ids")
@@ -602,6 +982,8 @@ def render_skill(entry):
         ]
     )
     for operation in entry["operations"]:
+        if "command" not in operation:
+            continue
         lines.extend(
             [
                 "# {}".format(operation["title"]),
@@ -638,6 +1020,146 @@ def render_skill(entry):
     return "\n".join(lines)
 
 
+def _typed_tool_call(entry, operation):
+    if operation["tool"] is None:
+        return None
+    arguments = {"providerConfigKey": entry["provider_config_key"]}
+    tool = operation["tool"]
+    if tool in {"nango_proxy_request", "nango_proxy_paginate"}:
+        arguments.update(
+            {
+                "method": operation["method"],
+                "path": operation["path"],
+            }
+        )
+        source_to_argument = (
+            ("query", "query"),
+            ("headers", "headers"),
+            ("json_body", "jsonBody"),
+            ("text_body", "textBody"),
+            ("content_type", "contentType"),
+        )
+        for source, argument in source_to_argument:
+            if source in operation:
+                arguments[argument] = operation[source]
+        if tool == "nango_proxy_paginate":
+            pagination = operation["pagination"]
+            arguments.update(
+                {
+                    "mode": pagination["mode"],
+                    "maxPages": pagination["max_pages"],
+                    "maxItems": pagination["max_items"],
+                }
+            )
+    elif tool == "nango_action":
+        arguments.update(
+            {
+                "actionName": operation["action_name"],
+                "input": operation["action_input"],
+            }
+        )
+    elif tool == "nango_disk_transfer":
+        arguments.update(operation["transfer"])
+    return {"tool": tool, "arguments": arguments}
+
+
+def _method_label(operation):
+    if operation["method"] is not None:
+        return "`{}`".format(operation["method"])
+    if operation["tool"] == "nango_action":
+        return "Not applicable — the registered action owns its transport."
+    if operation["tool"] == "nango_disk_transfer":
+        return "Not applicable — the transfer tool owns its provider phases."
+    return "Not verified."
+
+
+def _path_label(operation):
+    if operation["path"] is not None:
+        return "`{}`".format(operation["path"])
+    if operation["tool"] == "nango_action":
+        return "Not applicable — registered action `{}`.".format(
+            operation["action_name"]
+        )
+    if operation["tool"] == "nango_disk_transfer":
+        return (
+            "Not applicable — use typed `localPath` and `remotePath`; never "
+            "supply a presigned URL."
+        )
+    return "Not verified."
+
+
+def _request_shape_label(operation):
+    tool = operation["tool"]
+    if tool in {"nango_proxy_request", "nango_proxy_paginate"}:
+        parts = ["method and relative path"]
+        if "query" in operation:
+            parts.append("ordered `query` name/value pairs")
+        if "headers" in operation:
+            parts.append("bounded `headers`")
+        if "json_body" in operation:
+            parts.append("`jsonBody`")
+        if "text_body" in operation:
+            parts.append("`textBody`")
+        if "content_type" in operation:
+            parts.append("explicit `contentType`")
+        return ", ".join(parts) + "; see the exact typed arguments below."
+    if tool == "nango_action":
+        return "Registered action `{}` with a strict `input` object.".format(
+            operation["action_name"]
+        )
+    if tool == "nango_disk_transfer":
+        return (
+            "Typed direction, configured-root local path, provider-relative "
+            "remote path, and overwrite flag."
+        )
+    if operation["availability"] == "blocked_contract":
+        return (
+            "Unavailable — exact body fields and a readback/reconciliation "
+            "contract are not verified."
+        )
+    return "Unavailable — no verified public request schema exists."
+
+
+def _pagination_label(operation):
+    pagination = operation["pagination"]
+    mode = pagination["mode"]
+    if mode == "none":
+        return "None — one bounded tool call."
+    if mode == "action-window":
+        return (
+            "`action-window`: page limit {page_limit}, caller max items "
+            "{max_items}. {continuation}"
+        ).format(**pagination)
+    if mode == "single":
+        return (
+            "`single`: one response, `maxPages={}`, `maxItems={}`. For CalDAV "
+            "the XML body is one item, so maxItems is not an event count."
+        ).format(pagination["max_pages"], pagination["max_items"])
+    return (
+        "`{}` with `maxPages={}` and `maxItems={}`; report the termination "
+        "reason."
+    ).format(mode, pagination["max_pages"], pagination["max_items"])
+
+
+def _mutability_label(operation):
+    operation_kind = operation["operation_kind"]
+    if operation_kind == "read":
+        return "`read` — no mutation approval."
+    if operation_kind == "mutation":
+        return "`mutation` — one-time approval is required before execution."
+    return "`unsupported` — no executable operation is classified."
+
+
+def _docs_label(operation):
+    docs = operation["docs"]
+    if docs["status"] == "verified":
+        return "[verified provider documentation]({})".format(docs["url"])
+    return (
+        "`not_verified` — no authoritative documentation URL is recorded for "
+        "this operation."
+    )
+
+
 def render_endpoints(entry):
     lines = [
         "# {}".format(entry["title"]),
@@ -650,7 +1172,7 @@ def render_endpoints(entry):
         "- **Scopes:** {}".format(entry["scopes"]),
         "- **Upstream base:** `{}`".format(entry["base"]),
         "",
-        "## Examples",
+        "## Operations",
         "",
     ]
     for operation in entry["operations"]:
@@ -658,14 +1180,54 @@ def render_endpoints(entry):
             [
                 "### {}".format(operation["title"]),
                 "",
-                "```bash",
-                "python3 {{baseDir}}/scripts/nango_proxy.py {}".format(
-                    operation["command"]
+                "- **Operation name:** `{}`".format(operation["title"]),
+                "- **Availability:** `{}`".format(operation["availability"]),
+                "- **Method:** {}".format(_method_label(operation)),
+                "- **Path:** {}".format(_path_label(operation)),
+                "- **Request shape:** {}".format(
+                    _request_shape_label(operation)
                 ),
-                "```",
+                "- **Pagination:** {}".format(_pagination_label(operation)),
+                "- **Mutability:** {}".format(_mutability_label(operation)),
+                "- **Verification:** {}".format(operation["verification"]),
+                "- **Authoritative docs:** {}".format(
+                    _docs_label(operation)
+                ),
                 "",
             ]
         )
+        tool_call = _typed_tool_call(entry, operation)
+        if tool_call is None:
+            lines.extend(
+                [
+                    "#### Non-executable boundary",
+                    "",
+                    "No executable typed tool call is available. The legacy "
+                    "command remains only in `SKILL.md` as an operator fallback; "
+                    "do not execute it without the missing verified contract.",
+                    "",
+                ]
+            )
+        else:
+            if operation["availability"] == "template":
+                lines.extend(
+                    [
+                        "This is a **non-executable template**. Replace every "
+                        "`REPLACE_WITH_...` value with a confirmed value inside "
+                        "the configured runtime boundary before execution.",
+                        "",
+                    ]
+                )
+            lines.extend(
+                [
+                    "#### Typed tool call",
+                    "",
+                    "```json",
+                    *_json_lines(tool_call),
+                    "```",
+                    "",
+                ]
+            )
     notes = entry["notes"].strip()
     if notes:
         lines.extend(["## Notes", "", notes, ""])

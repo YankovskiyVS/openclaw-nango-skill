@@ -18,11 +18,49 @@
       "operations": [
         {
           "title": "GET profile",
-          "command": "call yandex-id info --query 'format=json' --json-output"
+          "command": "call yandex-id info --query 'format=json' --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "GET",
+          "path": "info",
+          "query": [
+            {
+              "name": "format",
+              "value": "json"
+            }
+          ],
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed profile response.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         },
         {
           "title": "legacy key",
-          "command": "call yandex info --query 'format=json' --json-output"
+          "command": "call yandex info --query 'format=json' --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "GET",
+          "path": "info",
+          "query": [
+            {
+              "name": "format",
+              "value": "json"
+            }
+          ],
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed profile response for the explicitly selected legacy connection key.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -40,11 +78,89 @@
       "operations": [
         {
           "title": "Disk meta",
-          "command": "call yandex-disk v1/disk --json-output"
+          "command": "call yandex-disk v1/disk --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "GET",
+          "path": "v1/disk",
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed disk metadata response.",
+          "docs": {
+            "status": "verified",
+            "url": "https://yandex.com/dev/disk/api/concepts/about.html"
+          }
         },
         {
           "title": "List root",
-          "command": "call yandex-disk 'v1/disk/resources' --query 'path=/' --json-output"
+          "command": "call yandex-disk 'v1/disk/resources' --query 'path=/' --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "v1/disk/resources",
+          "query": [
+            {
+              "name": "path",
+              "value": "/"
+            }
+          ],
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded resource pages and the pagination termination reason.",
+          "docs": {
+            "status": "verified",
+            "url": "https://yandex.com/dev/disk/api/concepts/about.html"
+          }
+        },
+        {
+          "title": "Upload file",
+          "availability": "template",
+          "tool": "nango_disk_transfer",
+          "method": null,
+          "path": null,
+          "transfer": {
+            "direction": "upload",
+            "localPath": "/REPLACE_WITH_CONFIGURED_UPLOAD_ROOT/report.csv",
+            "remotePath": "disk:/report.csv",
+            "overwrite": false
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "After transfer success, read v1/disk/resources for disk:/report.csv and compare remote path and size; compare checksum only when the provider response includes one.",
+          "docs": {
+            "status": "verified",
+            "url": "https://yandex.com/dev/disk/api/concepts/about.html"
+          }
+        },
+        {
+          "title": "Download file",
+          "availability": "template",
+          "tool": "nango_disk_transfer",
+          "method": null,
+          "path": null,
+          "transfer": {
+            "direction": "download",
+            "localPath": "/REPLACE_WITH_CONFIGURED_DOWNLOAD_ROOT/report.csv",
+            "remotePath": "disk:/report.csv",
+            "overwrite": false
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "Require the confirmed transfer size and sha256, then verify the final local file inside the configured download root.",
+          "docs": {
+            "status": "verified",
+            "url": "https://yandex.com/dev/disk/api/concepts/about.html"
+          }
         }
       ]
     },
@@ -62,7 +178,100 @@
       "operations": [
         {
           "title": "Resolve mailbox email",
-          "command": "call yandex-mail info --query 'format=json' --json-output"
+          "command": "call yandex-mail info --query 'format=json' --json-output",
+          "availability": "ready",
+          "tool": "nango_action",
+          "method": null,
+          "path": null,
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed mailbox address from the registered action.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          },
+          "action_name": "resolve-mailbox",
+          "action_input": {}
+        },
+        {
+          "title": "List messages",
+          "availability": "ready",
+          "tool": "nango_action",
+          "method": null,
+          "path": null,
+          "action_name": "list-messages",
+          "action_input": {
+            "folder": "INBOX",
+            "limit": 25,
+            "unseenOnly": false
+          },
+          "pagination": {
+            "mode": "action-window",
+            "page_limit": 25,
+            "max_items": 500,
+            "continuation": "Use numeric nextCursor as beforeUid; stop on a non-positive or non-numeric cursor."
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded message metadata. Continue only with a numeric nextCursor converted to beforeUid, and report the caller-side item bound.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Get message",
+          "availability": "ready",
+          "tool": "nango_action",
+          "method": null,
+          "path": null,
+          "action_name": "get-message",
+          "action_input": {
+            "folder": "INBOX",
+            "uid": 12345
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed message for the requested folder and UID.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Send message with attachment",
+          "availability": "ready",
+          "tool": "nango_action",
+          "method": null,
+          "path": null,
+          "action_name": "send-message",
+          "action_input": {
+            "idempotencyKey": "mail-20260723-0001",
+            "to": [
+              "recipient@example.com"
+            ],
+            "subject": "Verification message",
+            "text": "Test message",
+            "attachments": [
+              {
+                "filename": "check.txt",
+                "contentType": "text/plain",
+                "contentBase64": "dGVzdAo="
+              }
+            ]
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "On confirmed success require mailbox and Message-ID. On unknown, keep the same idempotency key and do not retry until provider mailbox state is checked externally; current read actions cannot search exact Message-ID.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -80,7 +289,68 @@
       "operations": [
         {
           "title": "CalDAV root",
-          "command": "call yandex-calendar calendars/ --json-output"
+          "command": "call yandex-calendar calendars/ --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "PROPFIND",
+          "path": "calendars/",
+          "pagination": {
+            "mode": "single",
+            "max_pages": 1,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return one bounded raw-XML response and the byte/page termination reason. Do not treat maxItems as a calendar count or infer collection paths from undocumented shapes.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          },
+          "headers": {
+            "Depth": "1"
+          },
+          "text_body": "<?xml version=\"1.0\" encoding=\"utf-8\"?><d:propfind xmlns:d=\"DAV:\"><d:prop><d:displayname/></d:prop></d:propfind>",
+          "content_type": "application/xml; charset=utf-8"
+        },
+        {
+          "title": "Query events (replace documented CalDAV fields)",
+          "availability": "template",
+          "tool": "nango_proxy_paginate",
+          "method": "REPORT",
+          "path": "calendars/REPLACE_WITH_DISCOVERED_COLLECTION/",
+          "headers": {
+            "Depth": "REPLACE_WITH_DOCUMENTED_DEPTH"
+          },
+          "text_body": "REPLACE_WITH_DOCUMENTED_BOUNDED_CALDAV_REPORT_XML",
+          "content_type": "application/xml; charset=utf-8",
+          "pagination": {
+            "mode": "single",
+            "max_pages": 1,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Before execution replace the collection, Depth, and XML with documented values including a bounded time range. Return one raw-XML response; maxItems does not count events.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Create event resource (replace documented CalDAV fields)",
+          "availability": "template",
+          "tool": "nango_proxy_request",
+          "method": "PUT",
+          "path": "calendars/REPLACE_WITH_DISCOVERED_COLLECTION/REPLACE_WITH_EVENT_NAME.ics",
+          "text_body": "REPLACE_WITH_COMPLETE_VCALENDAR_ICS",
+          "content_type": "text/calendar; charset=utf-8",
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "After success or unknown, GET the same event path and compare the body and safe ETag. Without an ETag, report verification as incomplete.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -98,7 +368,56 @@
       "operations": [
         {
           "title": "JSON v5 campaigns",
-          "command": "call yandex-direct json/v5/campaigns --method POST --json '{\"method\":\"get\",\"params\":{\"SelectionCriteria\":{},\"FieldNames\":[\"Id\",\"Name\"]}}' --json-output"
+          "command": "call yandex-direct json/v5/campaigns --method POST --json '{\"method\":\"get\",\"params\":{\"SelectionCriteria\":{},\"FieldNames\":[\"Id\",\"Name\"]}}' --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "POST",
+          "path": "json/v5/campaigns",
+          "json_body": {
+            "method": "get",
+            "params": {
+              "SelectionCriteria": {},
+              "FieldNames": [
+                "Id",
+                "Name"
+              ],
+              "Page": {
+                "Limit": 100,
+                "Offset": 0
+              }
+            }
+          },
+          "pagination": {
+            "mode": "body-offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Advance Page.Offset within configured bounds and return the terminal page and termination reason.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Update campaign (replace provider-documented payload)",
+          "availability": "template",
+          "tool": "nango_proxy_request",
+          "method": "POST",
+          "path": "json/v5/campaigns",
+          "json_body": {
+            "method": "update",
+            "params": "REPLACE_WITH_PROVIDER_DOCUMENTED_CAMPAIGN_UPDATE_PAYLOAD"
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "After confirmed success read the campaign and compare intended fields. After unknown, inspect campaign state before any retry.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -116,7 +435,20 @@
       "operations": [
         {
           "title": "Legacy placeholder — do not execute without a documented path",
-          "command": "call yandex-maps v1/ --json-output"
+          "command": "call yandex-maps v1/ --json-output",
+          "availability": "unsupported",
+          "tool": null,
+          "method": null,
+          "path": null,
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "unsupported",
+          "verification": "Do not invent a host, path, schema, or pagination contract; report that no supported public-bookmarks route is confirmed.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -134,7 +466,22 @@
       "operations": [
         {
           "title": "Campaigns v2",
-          "command": "call yandex-market v2/campaigns --json-output"
+          "command": "call yandex-market v2/campaigns --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "v2/campaigns",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded campaign pages and the pagination termination reason; do not claim the provider authentication was live-tested.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -152,7 +499,20 @@
       "operations": [
         {
           "title": "Legacy create shape — do not execute without real required fields",
-          "command": "call yandex-delivery api/b2b/platform/offers/create --method POST --json '{}' --json-output"
+          "command": "call yandex-delivery api/b2b/platform/offers/create --method POST --json '{}' --json-output",
+          "availability": "blocked_contract",
+          "tool": null,
+          "method": "POST",
+          "path": "api/b2b/platform/offers/create",
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "Do not execute until the exact product body schema, created-entity read path, and unknown-outcome reconciliation route are verified.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -170,7 +530,20 @@
       "operations": [
         {
           "title": "Current user",
-          "command": "call bitrix24 user.current --json-output"
+          "command": "call bitrix24 user.current --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "GET",
+          "path": "user.current",
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed current-user response.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -188,11 +561,63 @@
       "operations": [
         {
           "title": "List leads",
-          "command": "call bitrix24-crm crm.lead.list --json-output"
+          "command": "call bitrix24-crm crm.lead.list --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "crm.lead.list",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         },
         {
           "title": "List deals",
-          "command": "call bitrix24-crm crm.deal.list --json-output"
+          "command": "call bitrix24-crm crm.deal.list --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "crm.deal.list",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Update deal",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "POST",
+          "path": "crm.deal.update",
+          "json_body": {
+            "id": 123,
+            "fields": {
+              "TITLE": "Updated deal title"
+            }
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "After confirmed success read the deal through crm.deal.get and compare intended fields. After unknown, inspect the same deal before any retry.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -210,7 +635,22 @@
       "operations": [
         {
           "title": "List tasks",
-          "command": "call bitrix24-tasks tasks.task.list --json-output"
+          "command": "call bitrix24-tasks tasks.task.list --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "tasks.task.list",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -228,7 +668,22 @@
       "operations": [
         {
           "title": "Storage list",
-          "command": "call bitrix24-disk disk.storage.getlist --json-output"
+          "command": "call bitrix24-disk disk.storage.getlist --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "disk.storage.getlist",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -246,7 +701,22 @@
       "operations": [
         {
           "title": "Recent dialogs",
-          "command": "call bitrix24-im im.recent.get --json-output"
+          "command": "call bitrix24-im im.recent.get --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "im.recent.get",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -264,11 +734,39 @@
       "operations": [
         {
           "title": "Current user",
-          "command": "call bitrix24-user user.current --json-output"
+          "command": "call bitrix24-user user.current --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "GET",
+          "path": "user.current",
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed current-user response.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         },
         {
           "title": "Departments",
-          "command": "call bitrix24-user department.get --json-output"
+          "command": "call bitrix24-user department.get --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "department.get",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -286,7 +784,22 @@
       "operations": [
         {
           "title": "Section list",
-          "command": "call bitrix24-calendar calendar.section.get --json-output"
+          "command": "call bitrix24-calendar calendar.section.get --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "calendar.section.get",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -304,7 +817,22 @@
       "operations": [
         {
           "title": "Workflow templates",
-          "command": "call bitrix24-bizproc bizproc.workflow.template.list --json-output"
+          "command": "call bitrix24-bizproc bizproc.workflow.template.list --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "bizproc.workflow.template.list",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -322,7 +850,22 @@
       "operations": [
         {
           "title": "External lines",
-          "command": "call bitrix24-telephony telephony.externalLine.get --json-output"
+          "command": "call bitrix24-telephony telephony.externalLine.get --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "telephony.externalLine.get",
+          "pagination": {
+            "mode": "offset",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -340,7 +883,20 @@
       "operations": [
         {
           "title": "Account",
-          "command": "call amocrm api/v4/account --json-output"
+          "command": "call amocrm api/v4/account --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_request",
+          "method": "GET",
+          "path": "api/v4/account",
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "read",
+          "verification": "Return only the confirmed account response.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -358,11 +914,41 @@
       "operations": [
         {
           "title": "Leads",
-          "command": "call amocrm-crm api/v4/leads --json-output"
+          "command": "call amocrm-crm api/v4/leads --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/leads",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         },
         {
           "title": "Contacts",
-          "command": "call amocrm-crm api/v4/contacts --json-output"
+          "command": "call amocrm-crm api/v4/contacts --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/contacts",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -380,7 +966,22 @@
       "operations": [
         {
           "title": "Catalogs",
-          "command": "call amocrm-catalog api/v4/catalogs --json-output"
+          "command": "call amocrm-catalog api/v4/catalogs --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/catalogs",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -398,7 +999,49 @@
       "operations": [
         {
           "title": "Talks",
-          "command": "call amocrm-chats api/v4/talks --json-output"
+          "command": "call amocrm-chats api/v4/talks --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/talks",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
+        },
+        {
+          "title": "Send message",
+          "availability": "ready",
+          "tool": "nango_action",
+          "method": null,
+          "path": null,
+          "action_name": "send-message",
+          "action_input": {
+            "msgid": "example-msg-20260723-0001",
+            "conversationId": "example-conversation-001",
+            "receiver": {
+              "id": "example-receiver-001",
+              "name": "Example receiver"
+            },
+            "text": "Hello",
+            "silent": false
+          },
+          "pagination": {
+            "mode": "none"
+          },
+          "operation_kind": "mutation",
+          "verification": "On confirmed success require result.refId to equal the input msgid and retain the provider msgid. On unknown, do not retry blindly: the registered talks read cannot prove delivery of the exact message.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -416,7 +1059,28 @@
       "operations": [
         {
           "title": "Events notes",
-          "command": "call amocrm-telephony api/v4/events --query 'filter[type]=incoming_call' --json-output"
+          "command": "call amocrm-telephony api/v4/events --query 'filter[type]=incoming_call' --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/events",
+          "query": [
+            {
+              "name": "filter[type]",
+              "value": "incoming_call"
+            }
+          ],
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -434,7 +1098,22 @@
       "operations": [
         {
           "title": "Tasks",
-          "command": "call amocrm-tasks api/v4/tasks --json-output"
+          "command": "call amocrm-tasks api/v4/tasks --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/tasks",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -452,7 +1131,22 @@
       "operations": [
         {
           "title": "Events",
-          "command": "call amocrm-events api/v4/events --json-output"
+          "command": "call amocrm-events api/v4/events --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/events",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     },
@@ -470,7 +1164,22 @@
       "operations": [
         {
           "title": "Users",
-          "command": "call amocrm-users api/v4/users --json-output"
+          "command": "call amocrm-users api/v4/users --json-output",
+          "availability": "ready",
+          "tool": "nango_proxy_paginate",
+          "method": "GET",
+          "path": "api/v4/users",
+          "pagination": {
+            "mode": "link",
+            "max_pages": 10,
+            "max_items": 500
+          },
+          "operation_kind": "read",
+          "verification": "Return bounded pages and the pagination termination reason; stop at provider end or configured bounds.",
+          "docs": {
+            "status": "not_verified",
+            "url": null
+          }
         }
       ]
     }

@@ -6,13 +6,23 @@
 - **Scopes:** msps:public_bookmarks
 - **Upstream base:** `No verified public bookmarks REST base`
 
-## Examples
+## Operations
 
 ### Legacy placeholder — do not execute without a documented path
 
-```bash
-python3 {baseDir}/scripts/nango_proxy.py call yandex-maps v1/ --json-output
-```
+- **Operation name:** `Legacy placeholder — do not execute without a documented path`
+- **Availability:** `unsupported`
+- **Method:** Not verified.
+- **Path:** Not verified.
+- **Request shape:** Unavailable — no verified public request schema exists.
+- **Pagination:** None — one bounded tool call.
+- **Mutability:** `unsupported` — no executable operation is classified.
+- **Verification:** Do not invent a host, path, schema, or pagination contract; report that no supported public-bookmarks route is confirmed.
+- **Authoritative docs:** `not_verified` — no authoritative documentation URL is recorded for this operation.
+
+#### Non-executable boundary
+
+No executable typed tool call is available. The legacy command remains only in `SKILL.md` as an operator fallback; do not execute it without the missing verified contract.
 
 ## Notes
 

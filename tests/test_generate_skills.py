@@ -118,6 +118,22 @@ GENERATED_PACKAGE_FILES = {
     "scripts/nango_proxy.py",
 }
 JSON_ARGUMENT = re.compile(r"--json '([^']*)'")
+ENDPOINT_LABELS = (
+    "**Operation name:**",
+    "**Method:**",
+    "**Path:**",
+    "**Request shape:**",
+    "**Pagination:**",
+    "**Mutability:**",
+    "**Verification:**",
+    "**Authoritative docs:**",
+)
+READY_TOOLS = {
+    "nango_proxy_request",
+    "nango_proxy_paginate",
+    "nango_action",
+    "nango_disk_transfer",
+}
 
 
 def _frontmatter_keys(text):
@@ -211,7 +227,11 @@ def test_catalog_is_the_ordered_source_for_all_existing_capabilities():
     assert aliases == {"yandex-id": ["yandex"]}
 
     actual_operations = {
-        entry["id"]: tuple(operation["command"] for operation in entry["operations"])
+        entry["id"]: tuple(
+            operation["command"]
+            for operation in entry["operations"]
+            if "command" in operation
+        )
         for entry in entries
     }
     assert actual_operations == EXPECTED_OPERATIONS
@@ -219,6 +239,52 @@ def test_catalog_is_the_ordered_source_for_all_existing_capabilities():
     for entry in entries:
         allowed_providers = {entry["provider_config_key"], *entry.get("aliases", [])}
         for operation in entry["operations"]:
+            required = {
+                "title",
+                "availability",
+                "tool",
+                "method",
+                "path",
+                "pagination",
+                "operation_kind",
+                "verification",
+                "docs",
+            }
+            assert required <= set(operation)
+            assert operation["availability"] in {
+                "ready",
+                "template",
+                "unsupported",
+                "blocked_contract",
+            }
+            assert operation["operation_kind"] in {
+                "read",
+                "mutation",
+                "unsupported",
+            }
+            assert operation["pagination"]["mode"] in {
+                "none",
+                "single",
+                "offset",
+                "body-offset",
+                "link",
+                "action-window",
+            }
+            assert operation["docs"]["status"] in {"verified", "not_verified"}
+            if operation["docs"]["status"] == "verified":
+                assert operation["docs"]["url"] == (
+                    "https://yandex.com/dev/disk/api/concepts/about.html"
+                )
+            else:
+                assert operation["docs"]["url"] is None
+
+            if operation["availability"] in {"ready", "template"}:
+                assert operation["tool"] in READY_TOOLS
+            else:
+                assert operation["tool"] is None
+
+            if "command" not in operation:
+                continue
             command = shlex.split(operation["command"])
             assert command[0] == "call"
             assert command[1] in allowed_providers
@@ -309,25 +375,90 @@ def test_generated_json_examples_are_literal_valid_json():
     assert invalid == {}
 
 
-def test_endpoint_commands_are_basedir_relative_and_references_resolve():
-    bad_commands = []
+def test_endpoint_references_use_typed_calls_and_resolve_skill_references():
+    bad_endpoint_examples = []
     missing_references = []
     for skill_id in EXPECTED_SKILLS:
         skill_dir = ROOT / "skills" / skill_id
         endpoints = skill_dir / "references" / "endpoints.md"
-        for line in endpoints.read_text(encoding="utf-8").splitlines():
-            if line.startswith("python3 ") and not line.startswith(
-                "python3 {baseDir}/scripts/nango_proxy.py "
-            ):
-                bad_commands.append((skill_id, line))
+        endpoint_text = endpoints.read_text(encoding="utf-8")
+        if "```bash" in endpoint_text or "python3 " in endpoint_text:
+            bad_endpoint_examples.append(skill_id)
 
         skill_text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
         for relative in re.findall(r"`\{baseDir\}/([^`]+)`", skill_text):
             if not (skill_dir / relative).is_file():
                 missing_references.append((skill_id, relative))
 
-    assert bad_commands == []
+    assert bad_endpoint_examples == []
     assert missing_references == []
+
+
+def test_every_endpoint_operation_has_complete_typed_reference_or_boundary():
+    document = json.loads(CATALOG_SOURCE.read_text(encoding="utf-8"))
+
+    for entry in document["skills"]:
+        endpoint_text = (
+            ROOT / "skills" / entry["id"] / "references" / "endpoints.md"
+        ).read_text(encoding="utf-8")
+        for index, operation in enumerate(entry["operations"]):
+            marker = "### {}".format(operation["title"])
+            start = endpoint_text.index(marker)
+            next_start = endpoint_text.find("\n### ", start + len(marker))
+            section = endpoint_text[start : next_start if next_start != -1 else None]
+            for label in ENDPOINT_LABELS:
+                assert label in section, (entry["id"], operation["title"], label)
+
+            if operation["availability"] in {"ready", "template"}:
+                match = re.search(
+                    r"#### Typed tool call\n\n```json\n(.*?)\n```",
+                    section,
+                    flags=re.DOTALL,
+                )
+                assert match is not None, (entry["id"], operation["title"])
+                tool_call = json.loads(match.group(1))
+                assert tool_call["tool"] == operation["tool"]
+                assert tool_call["arguments"]["providerConfigKey"] == entry["id"]
+                if operation["availability"] == "template":
+                    assert "non-executable template" in section
+            else:
+                assert "#### Non-executable boundary" in section
+                assert "#### Typed tool call" not in section
+
+
+def test_special_endpoint_boundaries_match_registered_runtime_surfaces():
+    refs = {
+        skill_id: (
+            ROOT / "skills" / skill_id / "references" / "endpoints.md"
+        ).read_text(encoding="utf-8")
+        for skill_id in (
+            "yandex-calendar",
+            "yandex-mail",
+            "yandex-disk",
+            "yandex-maps",
+            "yandex-delivery",
+        )
+    }
+
+    assert '"method": "PROPFIND"' in refs["yandex-calendar"]
+    assert '"method": "REPORT"' in refs["yandex-calendar"]
+    for action in (
+        "resolve-mailbox",
+        "list-messages",
+        "get-message",
+        "send-message",
+    ):
+        assert '"actionName": "{}"'.format(action) in refs["yandex-mail"]
+    assert '"tool": "nango_proxy_request"' in refs["yandex-disk"]
+    assert '"tool": "nango_proxy_paginate"' in refs["yandex-disk"]
+    assert '"tool": "nango_disk_transfer"' in refs["yandex-disk"]
+    assert "No executable typed tool call" in refs["yandex-maps"]
+    assert '"path": "v1/"' not in refs["yandex-maps"]
+    assert "No executable typed tool call" in refs["yandex-delivery"]
+    assert (
+        '"path": "api/b2b/platform/offers/create"'
+        not in refs["yandex-delivery"]
+    )
 
 
 def test_all_packages_contain_canonical_shared_assets_with_canonical_modes():
@@ -472,9 +603,10 @@ def test_catalog_ids_cannot_escape_the_exact_skill_allowlist(tmp_path):
     escaped["name"] = "../../escaped-package"
     escaped["provider_config_key"] = "../../escaped-package"
     for operation in escaped["operations"]:
-        operation["command"] = operation["command"].replace(
-            "call yandex-disk", "call ../../escaped-package", 1
-        )
+        if "command" in operation:
+            operation["command"] = operation["command"].replace(
+                "call yandex-disk", "call ../../escaped-package", 1
+            )
     (root / "catalog" / "skills.json").write_text(
         json.dumps(document), encoding="utf-8"
     )
@@ -485,6 +617,23 @@ def test_catalog_ids_cannot_escape_the_exact_skill_allowlist(tmp_path):
     assert result.returncode == 2
     assert not outside.exists()
     assert "exact ordered skill ids" in result.stderr
+
+
+def test_catalog_rejects_unverified_or_incomplete_operation_sources(tmp_path):
+    root = _make_repository(tmp_path)
+    document = json.loads(
+        (root / "catalog" / "skills.json").read_text(encoding="utf-8")
+    )
+    operation = document["skills"][0]["operations"][0]
+    operation["docs"] = {"status": "verified", "url": None}
+    (root / "catalog" / "skills.json").write_text(
+        json.dumps(document), encoding="utf-8"
+    )
+
+    result = _run_generator(root)
+
+    assert result.returncode == 2
+    assert "verified docs require an https URL" in result.stderr
 
 
 def test_check_detects_generated_file_mode_drift_without_writing(tmp_path):
