@@ -14,7 +14,6 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -42,7 +41,7 @@ afterEach(async () => {
 
 async function temporaryRoots() {
   const base = await realpath(
-    await mkdtemp(path.join(tmpdir(), "nango-disk-transfer-")),
+    await mkdtemp(path.join(process.cwd(), ".nango-disk-transfer-")),
   );
   temporaryDirectories.push(base);
   const uploadRoot = path.join(base, "uploads");
