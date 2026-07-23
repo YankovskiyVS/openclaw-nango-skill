@@ -124,30 +124,46 @@ python3 -m pytest tests/test_generate_skills.py tests/test_validate_skills.py -q
 **Files:**
 
 - Create: `package.json`
+- Create: `package-lock.json`
 - Create: `openclaw-plugin/package.json`
 - Create: `openclaw-plugin/tsconfig.json`
 - Create: `openclaw-plugin/vitest.config.ts`
 - Create: `openclaw-plugin/openclaw.plugin.json`
 - Create: `openclaw-plugin/src/index.ts`
 - Create: `openclaw-plugin/test/manifest.test.ts`
+- Create: `openclaw-plugin/test/runtime-scaffold.test.ts`
 
 **RED**
 
-1. Test manifest id, four declared tools, activation, strict config schema,
-   source/runtime entries and minimum OpenClaw/Node compatibility.
-2. Verify the test fails because the package is absent.
+1. Test manifest id, four declared optional tools, activation and strict config
+   schema.
+2. Test `extensions` points to source, `runtimeExtensions` points to built
+   JavaScript, `compat.pluginApi` and the enforced
+   `install.minHostVersion`/Node floors target OpenClaw `2026.6.11`.
+3. Test the source/runtime entry arrays align and never escape the package.
+4. Test all four runtime registrations match the manifest and are optional.
+5. Test the temporary scaffold hook blocks every Nango tool and every
+   placeholder execution returns `not_implemented` without I/O.
+6. Verify the tests fail because the package is absent.
 
 **GREEN**
 
 1. Add TypeScript ESM metadata and a minimal `definePluginEntry` entry.
 2. Use focused imports from `openclaw/plugin-sdk/plugin-entry` and `typebox`.
 3. Do not use the Codex plugin manifest or `openclaw/plugin-sdk/core`.
-4. Install pinned dependencies and run:
+4. Register four strict placeholder tools as optional. Install a synchronous
+   scaffold `before_tool_call` hook that blocks all four; each placeholder
+   execute path independently returns `not_implemented` and performs no I/O.
+5. Use `openclaw.install.minHostVersion` for the actual host-version floor.
+   Do not add the locally ignored `compat.minGatewayVersion`.
+6. Install pinned dependencies and run:
 
 ```bash
 npm install
 npm --workspace openclaw-plugin test -- manifest.test.ts
 npm --workspace openclaw-plugin run typecheck
+npm --workspace openclaw-plugin run build
+npm pack --workspace openclaw-plugin --dry-run --json
 ```
 
 ## Task 5: Implement the shared provider registry and validation boundary
@@ -220,7 +236,9 @@ envelope and policy, not mock call counts alone.
 3. Set approval timeout to 120 seconds, omit legacy `timeoutBehavior`, and
    attach a one-time HMAC proof only through post-approval params.
 4. Verify and atomically consume the proof inside mutating tool execution.
-5. Register tools and the hook only after the pure policy tests pass.
+5. Replace the scaffold blocking hook with the production approval hook only
+   after the pure policy tests pass. Keep placeholder executions fail-closed
+   until Tasks 8–10 replace them with tested implementations.
 
 ## Task 8: Implement generic request and pagination tools
 
