@@ -1,0 +1,36 @@
+{
+  "id": "nango-tools",
+  "name": "Nango Tools",
+  "description": "Typed Nango provider tools for OpenClaw.",
+  "version": "0.1.0",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "nango_proxy_request",
+      "nango_proxy_paginate",
+      "nango_action",
+      "nango_disk_transfer"
+    ]
+  },
+  "toolMetadata": {
+    "nango_proxy_request": {
+      "optional": true
+    },
+    "nango_proxy_paginate": {
+      "optional": true
+    },
+    "nango_action": {
+      "optional": true
+    },
+    "nango_disk_transfer": {
+      "optional": true
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

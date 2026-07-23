@@ -1,0 +1,45 @@
+{
+  "name": "openclaw-nango-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "openclaw.plugin.json"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "openclaw": {
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "runtimeExtensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.6.11"
+    },
+    "install": {
+      "minHostVersion": ">=2026.6.11"
+    }
+  },
+  "dependencies": {
+    "typebox": "1.1.39"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.6.11"
+  },
+  "devDependencies": {
+    "openclaw": "2026.6.11",
+    "typescript": "6.0.3",
+    "vitest": "4.1.8"
+  }
+}
