@@ -8,6 +8,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from _shared.scripts import nango_proxy
+from scripts import generate_skills
+
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts" / "generate_skills.py"
@@ -581,6 +586,128 @@ def test_catalog_rejects_command_on_non_executable_boundary(tmp_path):
     assert result.returncode == 2
     assert "non-executable boundary cannot declare a command" in (
         result.stdout + result.stderr
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    (
+        pytest.param(
+            "Authorization",
+            "catalog-header-secret",
+            id="authorization",
+        ),
+        pytest.param(
+            "Connection-Id",
+            "catalog-header-secret",
+            id="nango-control",
+        ),
+        pytest.param("Bad Header", "value", id="invalid-name"),
+        pytest.param("X-Test", "line\r\nbreak", id="line-break"),
+        pytest.param("X-Test", "café", id="non-ascii-value"),
+        pytest.param(
+            "Nango-Proxy-Nango-Proxy-Authorization",
+            "catalog-header-secret",
+            id="recursive-passthrough",
+        ),
+        pytest.param(
+            "Nango-Proxy-X-Nango-Control",
+            "catalog-header-secret",
+            id="passthrough-blocked-prefix",
+        ),
+        pytest.param(
+            "X-Cloud-Ru-Trace",
+            "catalog-header-secret",
+            id="cloudru-blocked-prefix",
+        ),
+        pytest.param(
+            "X-Cloudru-Trace",
+            "catalog-header-secret",
+            id="cloudru-compact-blocked-prefix",
+        ),
+        pytest.param(
+            "X-Evoclaw-Trace",
+            "catalog-header-secret",
+            id="evoclaw-blocked-prefix",
+        ),
+        pytest.param(
+            "X-Evolution-Trace",
+            "catalog-header-secret",
+            id="evolution-blocked-prefix",
+        ),
+        pytest.param(
+            "X-Nango-Trace",
+            "catalog-header-secret",
+            id="nango-blocked-prefix",
+        ),
+    ),
+)
+def test_catalog_rejects_headers_rejected_by_runtime(
+    tmp_path,
+    name,
+    value,
+):
+    root = _make_repository(tmp_path)
+    document = json.loads(
+        (root / "catalog" / "skills.json").read_text(encoding="utf-8")
+    )
+    calendar = next(
+        entry
+        for entry in document["skills"]
+        if entry["id"] == "yandex-calendar"
+    )
+    operation = calendar["operations"][0]
+    operation["headers"] = {name: value}
+    operation["command"] = operation["command"].replace(
+        "--header 'Depth: 1'",
+        "--header {}".format(shlex.quote("{}: {}".format(name, value))),
+        1,
+    )
+    (root / "catalog" / "skills.json").write_text(
+        json.dumps(document),
+        encoding="utf-8",
+    )
+
+    result = _run_generator(root)
+
+    assert result.returncode == 2
+    output = result.stdout + result.stderr
+    assert "header" in output.lower()
+    assert "catalog-header-secret" not in output
+
+
+def test_catalog_accepts_runtime_safe_depth_and_content_type_headers(tmp_path):
+    root = _make_repository(tmp_path)
+
+    result = _run_generator(root)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calendar = (
+        root / "skills" / "yandex-calendar" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "--header 'Depth: 1'" in calendar
+    assert (
+        "--header 'Content-Type: application/xml; charset=utf-8'"
+        in calendar
+    )
+
+
+def test_catalog_header_policy_matches_packaged_runtime_policy():
+    assert (
+        generate_skills._HEADER_NAME_RE.pattern
+        == nango_proxy._HEADER_NAME_RE.pattern
+    )
+    assert (
+        generate_skills._BLOCKED_REQUEST_HEADERS
+        == nango_proxy._BLOCKED_REQUEST_HEADERS
+    )
+    assert (
+        generate_skills._BLOCKED_REQUEST_HEADER_PREFIXES
+        == nango_proxy._BLOCKED_REQUEST_HEADER_PREFIXES
+    )
+    assert (
+        generate_skills._NANGO_PASSTHROUGH_HEADER_PREFIX
+        == nango_proxy._NANGO_PASSTHROUGH_HEADER_PREFIX
     )
 
 

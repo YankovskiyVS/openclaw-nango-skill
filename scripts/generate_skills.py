@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import shutil
 import stat
@@ -178,6 +179,46 @@ PREFERRED_OPERATION_INDEX = {
     "yandex-disk": 1,
 }
 
+# Keep this catalog-time policy aligned with `_parse_headers` in the packaged
+# fallback. The generator cannot import that executable without path-dependent
+# module loading, and the fallback must remain a standalone packaged script.
+_HEADER_NAME_RE = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
+_BLOCKED_REQUEST_HEADERS = frozenset(
+    {
+        "api-key",
+        "authorization",
+        "base-url-override",
+        "connection",
+        "connection-id",
+        "content-length",
+        "cookie",
+        "decompress",
+        "host",
+        "keep-alive",
+        "proxy-authorization",
+        "proxy-connection",
+        "provider-config-key",
+        "retries",
+        "set-cookie",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "upgrade",
+        "x-api-key",
+        "x-http-method",
+        "x-http-method-override",
+        "x-method-override",
+    }
+)
+_BLOCKED_REQUEST_HEADER_PREFIXES = (
+    "x-cloud-ru-",
+    "x-cloudru-",
+    "x-evoclaw-",
+    "x-evolution-",
+    "x-nango-",
+)
+_NANGO_PASSTHROUGH_HEADER_PREFIX = "nango-proxy-"
+
 
 def _trigger_phrase(entry):
     value = entry["when"].strip().rstrip(".")
@@ -332,6 +373,19 @@ def _validate_query(skill_id, query):
             )
 
 
+def _is_blocked_request_header(normalized_name):
+    effective_name = normalized_name
+    while effective_name.startswith(_NANGO_PASSTHROUGH_HEADER_PREFIX):
+        effective_name = effective_name[
+            len(_NANGO_PASSTHROUGH_HEADER_PREFIX) :
+        ]
+        if not effective_name:
+            return True
+    return effective_name in _BLOCKED_REQUEST_HEADERS or effective_name.startswith(
+        _BLOCKED_REQUEST_HEADER_PREFIXES
+    )
+
+
 def _validate_headers(skill_id, headers, label):
     if not isinstance(headers, dict) or not all(
         isinstance(name, str)
@@ -342,6 +396,28 @@ def _validate_headers(skill_id, headers, label):
         raise ValueError(
             "{} {} headers must be string pairs".format(skill_id, label)
         )
+    for name, value in headers.items():
+        if "\r" in name or "\n" in name or "\r" in value or "\n" in value:
+            raise ValueError(
+                "{} {} headers must not contain line breaks".format(
+                    skill_id,
+                    label,
+                )
+            )
+        if _HEADER_NAME_RE.fullmatch(name) is None:
+            raise ValueError(
+                "{} {} has an invalid header name".format(skill_id, label)
+            )
+        if _is_blocked_request_header(name.lower()):
+            raise ValueError(
+                "{} {} header is not allowed".format(skill_id, label)
+            )
+        try:
+            value.encode("ascii")
+        except UnicodeEncodeError as exc:
+            raise ValueError(
+                "{} {} header value must use ASCII".format(skill_id, label)
+            ) from exc
 
 
 def _validate_body_fields(skill_id, contract, label):
@@ -361,6 +437,11 @@ def _validate_body_fields(skill_id, contract, label):
             raise ValueError(
                 "{} {} content_type requires text_body".format(skill_id, label)
             )
+        _validate_headers(
+            skill_id,
+            {"Content-Type": contract["content_type"]},
+            label,
+        )
     if "json_body" in contract and "text_body" in contract:
         raise ValueError(
             "{} {} cannot mix json_body and text_body".format(skill_id, label)
@@ -553,6 +634,17 @@ def _command_http_contract(skill_id, command_text):
         )
     if content_type is not None:
         contract["content_type"] = content_type
+    _validate_headers(
+        skill_id,
+        contract["headers"],
+        "operation command",
+    )
+    if content_type is not None:
+        _validate_headers(
+            skill_id,
+            {"Content-Type": content_type},
+            "operation command",
+        )
     return contract
 
 

@@ -340,8 +340,14 @@ def test_every_packaged_fallback_copy_starts_and_reaches_health(
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert len(fake_proxy.requests) == before + 1
-    assert fake_proxy.requests[-1].method == "GET"
-    assert fake_proxy.requests[-1].path == "/health"
+    request = fake_proxy.requests[-1]
+    assert request.method == "GET"
+    assert request.path == "/health"
+    assert request.raw_query == ""
+    assert request.query == []
+    assert request.body == b""
+    assert "authorization" not in request.headers
+    assert "content-type" not in request.headers
     assert "HTTP 200" in result.stdout
     assert API_KEY not in result.stdout + result.stderr
     assert RESPONSE_HEADER_SECRET not in result.stdout + result.stderr
