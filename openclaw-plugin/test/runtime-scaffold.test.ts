@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import plugin from "../src/index.js";
 
@@ -32,7 +32,7 @@ type HookOptions = {
   timeoutMs?: number;
 };
 
-function registerScaffold() {
+function registerScaffold(pluginConfig?: Record<string, unknown>) {
   const tools: Array<{
     tool: RegisteredTool;
     options: { optional?: boolean } | undefined;
@@ -41,6 +41,7 @@ function registerScaffold() {
   let beforeToolCallOptions: HookOptions | undefined;
 
   plugin.register?.({
+    ...(pluginConfig === undefined ? {} : { pluginConfig }),
     registerTool(tool: RegisteredTool, options?: { optional?: boolean }) {
       tools.push({ tool, options });
     },
@@ -59,7 +60,11 @@ function registerScaffold() {
   return { tools, beforeToolCall, beforeToolCallOptions };
 }
 
-describe("temporary runtime scaffold", () => {
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("runtime registration", () => {
   test("uses the focused plugin entry and TypeBox imports", async () => {
     const sourcePath = fileURLToPath(new URL("../src/index.ts", import.meta.url));
     const source = await readFile(sourcePath, "utf8");
@@ -81,12 +86,15 @@ describe("temporary runtime scaffold", () => {
       expect(tool.parameters).toMatchObject({
         type: "object",
         additionalProperties: false,
-        properties: {},
       });
     }
+    expect(tools[0]?.tool.parameters.properties).not.toEqual({});
+    expect(tools[1]?.tool.parameters.properties).not.toEqual({});
+    expect(tools[2]?.tool.parameters.properties).toEqual({});
+    expect(tools[3]?.tool.parameters.properties).toEqual({});
   });
 
-  test("synchronously blocks every scaffold tool and leaves other tools alone", () => {
+  test("keeps the synchronous approval policy and leaves other tools alone", () => {
     const { beforeToolCall, beforeToolCallOptions } = registerScaffold();
 
     expect(beforeToolCall).toBeTypeOf("function");
@@ -100,10 +108,7 @@ describe("temporary runtime scaffold", () => {
         { toolName },
       );
       expect(decision).not.toBeInstanceOf(Promise);
-      expect(decision).toEqual({
-        block: true,
-        blockReason: "Nango tools are not implemented",
-      });
+      expect(decision).toMatchObject({ block: true });
     }
     expect(
       beforeToolCall!(
@@ -113,12 +118,12 @@ describe("temporary runtime scaffold", () => {
     ).toBeUndefined();
   });
 
-  test("returns a stable not-started result from every placeholder without I/O", async () => {
+  test("fails real tools closed on missing config and keeps only action/disk placeholders", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(new Error("unexpected network I/O"));
     const { tools } = registerScaffold();
-    const expected = {
+    const placeholder = {
       content: [
         {
           type: "text",
@@ -132,9 +137,79 @@ describe("temporary runtime scaffold", () => {
       },
     };
 
-    for (const { tool } of tools) {
-      await expect(tool.execute("test-call", {})).resolves.toEqual(expected);
-    }
+    await expect(
+      tools[0]?.tool.execute("request-call", {
+        providerConfigKey: "amocrm-crm",
+        method: "GET",
+        path: "api/v4/leads",
+      }),
+    ).resolves.toMatchObject({
+      details: {
+        ok: false,
+        error: { code: "invalid_runtime_config" },
+        outcome: "not_started",
+      },
+    });
+    await expect(
+      tools[1]?.tool.execute("paginate-call", {
+        providerConfigKey: "amocrm-crm",
+        method: "GET",
+        path: "api/v4/leads",
+        mode: "single",
+        maxPages: 1,
+        maxItems: 1,
+      }),
+    ).resolves.toMatchObject({
+      details: {
+        ok: false,
+        error: { code: "invalid_runtime_config" },
+        outcome: "not_started",
+      },
+    });
+    await expect(
+      tools[2]?.tool.execute("action-call", {}),
+    ).resolves.toEqual(placeholder);
+    await expect(
+      tools[3]?.tool.execute("disk-call", {}),
+    ).resolves.toEqual(placeholder);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test("wires one parsed config and the proxy client into real execution", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ accepted: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const { tools } = registerScaffold({
+      cloudru: {
+        proxyBaseUrl: "https://proxy.example.test",
+        projectId: "project",
+        evoClawId: "evoclaw",
+        apiKey: "runtime-secret-sentinel",
+      },
+    });
+
+    const result = await tools[0]?.tool.execute("wired-request", {
+      providerConfigKey: "amocrm-crm",
+      method: "GET",
+      path: "api/v4/leads",
+    });
+
+    expect(result).toMatchObject({
+      details: {
+        ok: true,
+        response: { body: { accepted: true } },
+      },
+    });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const init = fetchSpy.mock.calls[0]?.[1];
+    expect(new Headers(init?.headers).get("authorization")).toBe(
+      "Api-Key runtime-secret-sentinel",
+    );
+    expect(JSON.stringify(result)).not.toContain(
+      "runtime-secret-sentinel",
+    );
   });
 });

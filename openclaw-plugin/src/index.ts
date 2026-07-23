@@ -5,6 +5,16 @@ import {
 import { Type } from "typebox";
 
 import { createApprovalController } from "./approval.js";
+import {
+  parseRuntimeConfig,
+  type RuntimeConfig,
+} from "./config.js";
+import {
+  createProxyClient,
+  type ProxyClient,
+} from "./proxy-client.js";
+import { createPaginateTool } from "./tools/paginate.js";
+import { createRequestTool } from "./tools/request.js";
 
 const TOOL_NAMES = [
   "nango_proxy_request",
@@ -14,6 +24,13 @@ const TOOL_NAMES = [
 ] as const;
 
 const TOOL_NAME_SET = new Set<string>(TOOL_NAMES);
+const PLACEHOLDER_TOOL_NAMES = [
+  "nango_action",
+  "nango_disk_transfer",
+] as const;
+const PLACEHOLDER_TOOL_NAME_SET = new Set<string>(
+  PLACEHOLDER_TOOL_NAMES,
+);
 const PLACEHOLDER_PARAMETERS = Type.Object(
   {},
   { additionalProperties: false },
@@ -40,8 +57,36 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
   description: "Typed Nango provider tools for OpenClaw.",
   register(api) {
     const approvals = createApprovalController();
+    let runtimeConfig: RuntimeConfig | undefined;
+    let proxyClient: ProxyClient | undefined;
+    try {
+      runtimeConfig = parseRuntimeConfig(api.pluginConfig);
+      proxyClient = createProxyClient(runtimeConfig, {
+        fetch: (input, init) => globalThis.fetch(input, init),
+      });
+    } catch {
+      // Registration remains deterministic. Real tool execution reports the
+      // stable invalid_runtime_config result without network I/O.
+    }
 
-    for (const toolName of TOOL_NAMES) {
+    api.registerTool(
+      createRequestTool({
+        approvals,
+        ...(runtimeConfig === undefined ? {} : { config: runtimeConfig }),
+        ...(proxyClient === undefined ? {} : { client: proxyClient }),
+      }),
+      { optional: true },
+    );
+    api.registerTool(
+      createPaginateTool({
+        approvals,
+        ...(runtimeConfig === undefined ? {} : { config: runtimeConfig }),
+        ...(proxyClient === undefined ? {} : { client: proxyClient }),
+      }),
+      { optional: true },
+    );
+
+    for (const toolName of PLACEHOLDER_TOOL_NAMES) {
       api.registerTool(
         {
           name: toolName,
@@ -96,7 +141,8 @@ const plugin: OpenClawPluginDefinition = definePluginEntry({
         });
         if (
           decision?.block &&
-          isEmptyRecord(event.params)
+          isEmptyRecord(event.params) &&
+          PLACEHOLDER_TOOL_NAME_SET.has(event.toolName)
         ) {
           return {
             block: true,

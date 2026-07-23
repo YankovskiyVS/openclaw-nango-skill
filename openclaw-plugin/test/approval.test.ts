@@ -959,7 +959,7 @@ describe("plugin approval wiring", () => {
     expect(mutation).not.toBeInstanceOf(Promise);
   });
 
-  test("guards placeholder execution with the same exact one-time proof", async () => {
+  test("guards real execution with the same exact one-time proof", async () => {
     const { tools, beforeToolCall } = registerPluginRuntime();
     const tool = tools.find(
       (candidate) => candidate.name === "nango_proxy_request",
@@ -967,7 +967,10 @@ describe("plugin approval wiring", () => {
     const params = requestParams({ method: "PATCH" });
 
     await expect(tool.execute("missing-call", params)).resolves.toMatchObject({
-      details: { code: "approval_required", outcome: "not_started" },
+      details: {
+        error: { code: "approval_required" },
+        outcome: "not_started",
+      },
     });
 
     const mutation = beforeToolCall?.(
@@ -982,12 +985,18 @@ describe("plugin approval wiring", () => {
     await expect(
       tool.execute("approved-call", mutation!.params!),
     ).resolves.toMatchObject({
-      details: { code: "not_implemented", outcome: "not_started" },
+      details: {
+        error: { code: "invalid_runtime_config" },
+        outcome: "not_started",
+      },
     });
     await expect(
       tool.execute("approved-call", mutation!.params!),
     ).resolves.toMatchObject({
-      details: { code: "approval_required", outcome: "not_started" },
+      details: {
+        error: { code: "approval_required" },
+        outcome: "not_started",
+      },
     });
   });
 });
