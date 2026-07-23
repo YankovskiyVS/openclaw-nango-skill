@@ -185,6 +185,23 @@ describe('pinned Yandex IMAP behavior', () => {
         });
     });
 
+    it('uses an explicit ALL criterion when no list filters are supplied', async () => {
+        const imap = imapHarness();
+        const service = new MailService({
+            store: new InMemoryAtomicStore(),
+            imapFactory: imap.factory,
+            smtpFactory: smtpHarness().factory
+        });
+
+        await service.listMessages(MAILBOX, TOKEN, {
+            folder: 'INBOX',
+            limit: 25,
+            unseenOnly: false
+        });
+
+        expect(imap.search).toHaveBeenCalledWith({ all: true }, { uid: true });
+    });
+
     it('maps a bounded message body and attachment metadata without returning content', async () => {
         const imap = imapHarness({
             fetchOne: {
@@ -308,6 +325,89 @@ describe('pinned Yandex IMAP behavior', () => {
                     contentId: null
                 }
             ]
+        });
+    });
+
+    it('rejects a raw source that exceeds the cap even if provider metadata claimed it was small', async () => {
+        const imap = imapHarness({
+            fetchOne: {
+                uid: 44,
+                envelope: envelope(),
+                internalDate: new Date('2026-07-23T12:00:00.000Z'),
+                flags: new Set(),
+                size: 1,
+                bodyStructure: { type: 'text/plain' }
+            },
+            sourceFetch: {
+                uid: 44,
+                source: Buffer.alloc(5 * 1024 * 1024 + 1)
+            }
+        });
+        const service = new MailService({
+            store: new InMemoryAtomicStore(),
+            imapFactory: imap.factory,
+            smtpFactory: smtpHarness().factory
+        });
+
+        await expect(
+            service.getMessage(MAILBOX, TOKEN, { folder: 'INBOX', uid: 44 })
+        ).rejects.toMatchObject({
+            code: 'message_too_large',
+            outcome: 'confirmed_failed'
+        });
+    });
+
+    it('rejects excessively deep provider BODYSTRUCTURE without recursive overflow', async () => {
+        const root: Record<string, unknown> = { type: 'multipart/mixed', childNodes: [] };
+        let cursor = root;
+        for (let depth = 0; depth < 100; depth += 1) {
+            const child: Record<string, unknown> = { type: 'multipart/mixed', childNodes: [] };
+            (cursor.childNodes as unknown[]).push(child);
+            cursor = child;
+        }
+        const imap = imapHarness({
+            fetchAll: [
+                {
+                    uid: 44,
+                    envelope: envelope(),
+                    internalDate: new Date('2026-07-23T12:00:00.000Z'),
+                    flags: new Set(),
+                    size: 1,
+                    bodyStructure: root
+                }
+            ]
+        });
+        const service = new MailService({
+            store: new InMemoryAtomicStore(),
+            imapFactory: imap.factory,
+            smtpFactory: smtpHarness().factory
+        });
+
+        await expect(
+            service.listMessages(MAILBOX, TOKEN, {
+                folder: 'INBOX',
+                limit: 1,
+                unseenOnly: false
+            })
+        ).rejects.toMatchObject({
+            code: 'imap_response_invalid',
+            outcome: 'confirmed_failed'
+        });
+    });
+
+    it('does not mislabel generic connection failures as authentication failures', async () => {
+        const imap = imapHarness();
+        imap.connect.mockRejectedValue(new Error('socket timeout'));
+        const service = new MailService({
+            store: new InMemoryAtomicStore(),
+            imapFactory: imap.factory,
+            smtpFactory: smtpHarness().factory
+        });
+
+        await expect(service.resolveMailbox(MAILBOX, TOKEN)).rejects.toMatchObject({
+            code: 'imap_connection_validation_failed',
+            outcome: 'confirmed_failed',
+            retryable: true
         });
     });
 });

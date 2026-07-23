@@ -326,6 +326,10 @@ export async function startServer(
             );
         }
     });
+    server.headersTimeout = 10_000;
+    server.requestTimeout = 35_000;
+    server.keepAliveTimeout = 5_000;
+    server.maxHeadersCount = 64;
 
     await new Promise<void>((resolveListening, rejectListening) => {
         server.once('error', rejectListening);

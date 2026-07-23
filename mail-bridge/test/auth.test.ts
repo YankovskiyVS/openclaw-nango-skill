@@ -96,6 +96,42 @@ describe('bridge request authentication', () => {
         ).rejects.toMatchObject({ code: 'request_replayed', status: 409 });
     });
 
+    it('fails closed instead of growing the single-replica replay store without bound', async () => {
+        const store = new InMemoryAtomicStore(() => 0, 2);
+
+        await expect(store.consumeNonce('nonce-one', 600)).resolves.toBe(true);
+        await expect(store.consumeNonce('nonce-two', 600)).resolves.toBe(true);
+        await expect(store.consumeNonce('nonce-three', 600)).rejects.toMatchObject({
+            code: 'shared_store_unavailable',
+            status: 503
+        });
+    });
+
+    it('rejects non-printable bytes in the bearer credential before consuming the nonce', async () => {
+        const consumeNonce = vi.fn().mockResolvedValue(true);
+        const headers = {
+            ...signedHeaders(),
+            authorization: `Bearer valid-prefix\u0000suffix`
+        };
+
+        await expect(
+            authenticateBridgeRequest(
+                { method: 'POST', path: PATH, headers, body: BODY },
+                {
+                    secret: SECRET,
+                    store: {
+                        consumeNonce,
+                        beginSend: vi.fn(),
+                        confirmSend: vi.fn(),
+                        markSendUnknown: vi.fn()
+                    },
+                    nowSeconds: () => NOW
+                }
+            )
+        ).rejects.toMatchObject({ code: 'authorization_invalid' });
+        expect(consumeNonce).not.toHaveBeenCalled();
+    });
+
     it('does not parse JSON or call mail for forged, stale or replayed requests', async () => {
         const parseJson = vi.fn().mockReturnValue(JSON.parse(BODY.toString('utf8')));
         const mail = {

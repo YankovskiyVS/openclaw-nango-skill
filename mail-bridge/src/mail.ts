@@ -20,6 +20,8 @@ export const SMTP_ENDPOINT = {
 const MAX_BODY_CHARS = 262_144;
 const MAX_SEND_CONTENT_BYTES = 1_048_576;
 const MAX_MESSAGE_SOURCE_BYTES = 5 * 1024 * 1024;
+const MAX_STRUCTURE_DEPTH = 32;
+const MAX_STRUCTURE_NODES = 1_000;
 const SEND_LEDGER_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 export const mailboxAddressSchema = z
@@ -269,14 +271,46 @@ function dateToIso(value: unknown): string | null {
     return null;
 }
 
-function hasAttachment(structure: unknown): boolean {
+function walkStructure(structure: unknown, visit: (node: Record<string, unknown>) => void): void {
     if (!isRecord(structure)) {
-        return false;
+        return;
     }
-    if (typeof structure.disposition === 'string' && structure.disposition.toLowerCase() === 'attachment') {
-        return true;
+    const stack: Array<{ node: Record<string, unknown>; depth: number }> = [{ node: structure, depth: 0 }];
+    const visited = new WeakSet<object>();
+    let nodeCount = 0;
+    while (stack.length > 0) {
+        const current = stack.pop()!;
+        nodeCount += 1;
+        if (
+            current.depth > MAX_STRUCTURE_DEPTH ||
+            nodeCount > MAX_STRUCTURE_NODES ||
+            visited.has(current.node)
+        ) {
+            throw confirmedFailed('imap_response_invalid', 'Yandex Mail returned invalid message structure.');
+        }
+        visited.add(current.node);
+        visit(current.node);
+        if (!Array.isArray(current.node.childNodes)) {
+            continue;
+        }
+        for (let index = current.node.childNodes.length - 1; index >= 0; index -= 1) {
+            const child = current.node.childNodes[index];
+            if (!isRecord(child)) {
+                throw confirmedFailed('imap_response_invalid', 'Yandex Mail returned invalid message structure.');
+            }
+            stack.push({ node: child, depth: current.depth + 1 });
+        }
     }
-    return Array.isArray(structure.childNodes) && structure.childNodes.some(hasAttachment);
+}
+
+function hasAttachment(structure: unknown): boolean {
+    let found = false;
+    walkStructure(structure, (node) => {
+        if (typeof node.disposition === 'string' && node.disposition.toLowerCase() === 'attachment') {
+            found = true;
+        }
+    });
+    return found;
 }
 
 function mapSummary(message: Record<string, unknown>): MessageSummary {
@@ -300,27 +334,28 @@ function mapSummary(message: Record<string, unknown>): MessageSummary {
 }
 
 function structureAttachments(structure: unknown): AttachmentMetadata[] {
-    if (!isRecord(structure)) {
-        return [];
-    }
-    const children = Array.isArray(structure.childNodes) ? structure.childNodes.flatMap(structureAttachments) : [];
-    if (typeof structure.disposition !== 'string' || structure.disposition.toLowerCase() !== 'attachment') {
-        return children.slice(0, 100);
-    }
-    const parameters = isRecord(structure.dispositionParameters) ? structure.dispositionParameters : {};
-    const typeParameters = isRecord(structure.parameters) ? structure.parameters : {};
-    return [
-        {
+    const attachments: AttachmentMetadata[] = [];
+    walkStructure(structure, (node) => {
+        if (
+            attachments.length >= 100 ||
+            typeof node.disposition !== 'string' ||
+            node.disposition.toLowerCase() !== 'attachment'
+        ) {
+            return;
+        }
+        const parameters = isRecord(node.dispositionParameters) ? node.dispositionParameters : {};
+        const typeParameters = isRecord(node.parameters) ? node.parameters : {};
+        attachments.push({
             filename:
                 boundedString(parameters.filename, 255) ??
                 boundedString(parameters.name, 255) ??
                 boundedString(typeParameters.name, 255),
-            contentType: boundedString(structure.type, 127) ?? 'application/octet-stream',
-            size: Number.isSafeInteger(structure.size) && (structure.size as number) >= 0 ? (structure.size as number) : 0,
-            contentId: contentId(structure.id)
-        },
-        ...children
-    ].slice(0, 100);
+            contentType: boundedString(node.type, 127) ?? 'application/octet-stream',
+            size: Number.isSafeInteger(node.size) && (node.size as number) >= 0 ? (node.size as number) : 0,
+            contentId: contentId(node.id)
+        });
+    });
+    return attachments;
 }
 
 async function logoutQuietly(client: ImapClientLike): Promise<void> {
@@ -354,8 +389,10 @@ export class MailService {
             return { mailbox };
         } catch {
             throw confirmedFailed(
-                'imap_authentication_failed',
-                'Yandex Mail rejected the current OAuth credential.'
+                'imap_connection_validation_failed',
+                'The Yandex Mail connection could not be validated.',
+                502,
+                true
             );
         } finally {
             await logoutQuietly(client);
@@ -385,6 +422,9 @@ export class MailService {
             }
             if (request.since !== undefined) {
                 query.since = new Date(request.since);
+            }
+            if (Object.keys(query).length === 0) {
+                query.all = true;
             }
             const found = await client.search(query, { uid: true });
             const candidates = (found || [])
@@ -477,6 +517,9 @@ export class MailService {
                 const sourceMessage = await client.fetchOne(request.uid, { source: true }, { uid: true });
                 if (!sourceMessage || !Buffer.isBuffer(sourceMessage.source)) {
                     throw confirmedFailed('imap_response_invalid', 'Yandex Mail returned an invalid message body.');
+                }
+                if (sourceMessage.source.byteLength > MAX_MESSAGE_SOURCE_BYTES) {
+                    throw confirmedFailed('message_too_large', 'The Yandex Mail message exceeds the bridge limit.', 413);
                 }
                 const parsed = await simpleParser(sourceMessage.source, {
                     skipHtmlToText: true,

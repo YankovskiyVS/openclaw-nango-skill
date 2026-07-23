@@ -51,9 +51,14 @@ export class InMemoryAtomicStore implements AtomicStateStore {
     readonly #nonces = new Map<string, number>();
     readonly #ledger = new Map<string, MemoryLedgerEntry>();
     readonly #nowMilliseconds: () => number;
+    readonly #maxEntriesPerMap: number;
 
-    constructor(nowMilliseconds: () => number = Date.now) {
+    constructor(nowMilliseconds: () => number = Date.now, maxEntriesPerMap = 10_000) {
+        if (!Number.isSafeInteger(maxEntriesPerMap) || maxEntriesPerMap < 1) {
+            throw new TypeError('maxEntriesPerMap must be a positive safe integer');
+        }
         this.#nowMilliseconds = nowMilliseconds;
+        this.#maxEntriesPerMap = maxEntriesPerMap;
     }
 
     async consumeNonce(nonce: string, ttlSeconds: number): Promise<boolean> {
@@ -62,8 +67,16 @@ export class InMemoryAtomicStore implements AtomicStateStore {
         if (expiresAt !== undefined && expiresAt > now) {
             return false;
         }
+        if (expiresAt !== undefined) {
+            this.#nonces.delete(nonce);
+        }
+        if (this.#nonces.size >= this.#maxEntriesPerMap) {
+            this.#pruneNonces(now);
+        }
+        if (this.#nonces.size >= this.#maxEntriesPerMap) {
+            throw sharedStoreUnavailable();
+        }
         this.#nonces.set(nonce, now + ttlSeconds * 1000);
-        this.#prune(now);
         return true;
     }
 
@@ -71,12 +84,20 @@ export class InMemoryAtomicStore implements AtomicStateStore {
         const now = this.#nowMilliseconds();
         const existing = this.#ledger.get(key);
         if (!existing || existing.expiresAt <= now) {
+            if (existing) {
+                this.#ledger.delete(key);
+            }
+            if (this.#ledger.size >= this.#maxEntriesPerMap) {
+                this.#pruneLedger(now);
+            }
+            if (this.#ledger.size >= this.#maxEntriesPerMap) {
+                throw sharedStoreUnavailable();
+            }
             this.#ledger.set(key, {
                 bodyHash,
                 state: 'pending',
                 expiresAt: now + ttlSeconds * 1000
             });
-            this.#prune(now);
             return { kind: 'new' };
         }
         if (existing.bodyHash !== bodyHash) {
@@ -115,19 +136,18 @@ export class InMemoryAtomicStore implements AtomicStateStore {
         return true;
     }
 
-    #prune(now: number): void {
-        if (this.#nonces.size > 10_000) {
-            for (const [key, expiresAt] of this.#nonces) {
-                if (expiresAt <= now) {
-                    this.#nonces.delete(key);
-                }
+    #pruneNonces(now: number): void {
+        for (const [key, expiresAt] of this.#nonces) {
+            if (expiresAt <= now) {
+                this.#nonces.delete(key);
             }
         }
-        if (this.#ledger.size > 10_000) {
-            for (const [key, entry] of this.#ledger) {
-                if (entry.expiresAt <= now) {
-                    this.#ledger.delete(key);
-                }
+    }
+
+    #pruneLedger(now: number): void {
+        for (const [key, entry] of this.#ledger) {
+            if (entry.expiresAt <= now) {
+                this.#ledger.delete(key);
             }
         }
     }
@@ -365,7 +385,7 @@ export async function authenticateBridgeRequest(
     }
 
     const authorization = header(request.headers, 'authorization');
-    const bearerMatch = authorization?.match(/^Bearer ([^\s]{1,8192})$/);
+    const bearerMatch = authorization?.match(/^Bearer ([\x21-\x7e]{1,8192})$/);
     if (!bearerMatch) {
         throw authFailure('authorization_invalid', 'A provider bearer credential is required.');
     }
