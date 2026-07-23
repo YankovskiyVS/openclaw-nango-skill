@@ -13,3 +13,7 @@
 ```bash
 python3 {baseDir}/scripts/nango_proxy.py call amocrm-chats api/v4/talks --json-output
 ```
+
+## Notes
+
+Read Talks through `api/v4/talks`. Send outbound messages through the registered `nango_action` `send-message` action with `providerConfigKey` `amocrm-chats`; confirm the returned message id and inspect chat state before retrying an unknown outcome.

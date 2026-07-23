@@ -22,4 +22,4 @@ python3 {baseDir}/scripts/nango_proxy.py call bitrix24-crm crm.deal.list --json-
 
 ## Notes
 
-Requires OAuth connection for provider_config_key bitrix24-crm.
+Requires OAuth connection for provider_config_key bitrix24-crm. Primary deal updates use nango_proxy_request with crm.deal.update; after confirmed success, read the deal with crm.deal.get, and after an uncertain dispatch inspect it before retrying.

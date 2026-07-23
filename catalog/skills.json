@@ -94,7 +94,7 @@
       "when": "User asks about Yandex Direct campaigns, ads, or reports.",
       "scopes": "direct:api",
       "base": "https://api.direct.yandex.com",
-      "notes": "Nango injects the provider credential. The caller must not supply or override auth and Nango control headers.",
+      "notes": "Nango injects the provider credential. The caller must not supply or override auth and Nango control headers. After a confirmed Direct mutation, read the campaign and compare intended fields; after an uncertain dispatch, inspect campaign state before retrying.",
       "operations": [
         {
           "title": "JSON v5 campaigns",
@@ -184,7 +184,7 @@
       "when": "User asks about Bitrix24 leads, deals, contacts, companies, invoices, SPA.",
       "scopes": "crm",
       "base": "https://{domain}/rest",
-      "notes": "Requires OAuth connection for provider_config_key bitrix24-crm.",
+      "notes": "Requires OAuth connection for provider_config_key bitrix24-crm. Primary deal updates use nango_proxy_request with crm.deal.update; after confirmed success, read the deal with crm.deal.get, and after an uncertain dispatch inspect it before retrying.",
       "operations": [
         {
           "title": "List leads",
@@ -394,7 +394,7 @@
       "when": "User asks about amoCRM chats, messengers, inbound channels.",
       "scopes": "account data",
       "base": "https://{subdomain}.amocrm.ru",
-      "notes": "",
+      "notes": "Read Talks through `api/v4/talks`. Send outbound messages through the registered `nango_action` `send-message` action with `providerConfigKey` `amocrm-chats`; confirm the returned message id and inspect chat state before retrying an unknown outcome.",
       "operations": [
         {
           "title": "Talks",

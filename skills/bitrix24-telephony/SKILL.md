@@ -40,6 +40,12 @@ Use `nango_proxy_paginate` with:
 }
 ```
 
+### Pagination result contract
+
+Return the bounded pages and the tool's termination reason. If a configured page or item bound stops the read, report that bound instead of claiming the provider collection is complete.
+
+For Bitrix24 `offset` pagination, use the provider `next` value as the next request's `start`; stop at provider end or the configured bounds.
+
 Request inputs are strict: relative `path`, ordered `query` pairs, bounded headers/body, and no caller-supplied auth, raw Nango control headers, approval proof, or operation classification fields.
 
 ## Operator-only fallback

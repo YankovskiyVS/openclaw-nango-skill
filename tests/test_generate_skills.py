@@ -351,6 +351,60 @@ def test_all_packages_contain_canonical_shared_assets_with_canonical_modes():
     assert stale == []
 
 
+def test_canonical_reference_documents_the_actual_fallback_and_typed_surfaces():
+    reference = (
+        ROOT / "_shared" / "references" / "api-reference.md"
+    ).read_text(encoding="utf-8")
+    proxy = (ROOT / "_shared" / "scripts" / "nango_proxy.py").read_text(
+        encoding="utf-8"
+    )
+
+    for method in (
+        "GET",
+        "HEAD",
+        "OPTIONS",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "PROPFIND",
+        "REPORT",
+    ):
+        assert '"{}"'.format(method) in proxy
+        assert "`{}`".format(method) in reference
+
+    for flag in (
+        "--proxy-url",
+        "--project-id",
+        "--evoclaw-id",
+        "--api-key-file",
+        "--timeout",
+        "--method",
+        "--query",
+        "--header",
+        "--json",
+        "--text",
+        "--body-file",
+        "--json-output",
+    ):
+        assert flag in proxy
+        assert "`{}`".format(flag) in reference
+
+    for tool in (
+        "nango_proxy_request",
+        "nango_proxy_paginate",
+        "nango_action",
+        "nango_disk_transfer",
+    ):
+        assert "`{}`".format(tool) in reference
+
+    assert "does not enforce the plugin approval proof" in reference
+    assert all(
+        outcome in reference
+        for outcome in ("`confirmed`", "`not_started`", "`confirmed_failed`", "`unknown`")
+    )
+
+
 def test_check_mode_is_read_only_and_reports_missing_extra_and_stale(tmp_path):
     root = _make_repository(tmp_path, seed_skills=True)
     stale = root / "skills" / "yandex-id" / "SKILL.md"

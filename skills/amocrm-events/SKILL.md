@@ -40,6 +40,12 @@ Use `nango_proxy_paginate` with:
 }
 ```
 
+### Pagination result contract
+
+Return the bounded pages and the tool's termination reason. If a configured page or item bound stops the read, report that bound instead of claiming the provider collection is complete.
+
+For amoCRM `link` pagination, follow only a verified same-origin next link within the configured bounds. Never fetch an absolute next URL directly.
+
 Request inputs are strict: relative `path`, ordered `query` pairs, bounded headers/body, and no caller-supplied auth, raw Nango control headers, approval proof, or operation classification fields.
 
 ## Operator-only fallback

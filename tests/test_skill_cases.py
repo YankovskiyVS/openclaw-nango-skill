@@ -126,3 +126,115 @@ def test_skill_evaluation_baseline_is_complete() -> None:
         assert marker in baseline
     for command in EXACT_INVALID_COMMANDS:
         assert command in baseline
+
+
+def test_paginated_eval_cases_document_their_result_and_cursor_contracts() -> None:
+    document = json.loads(CASES_PATH.read_text(encoding="utf-8"))
+    paginated_cases = [
+        case
+        for case in document["cases"]
+        if case["expected"]["tool"] == "nango_proxy_paginate"
+    ]
+
+    for case in paginated_cases:
+        skill = case["skill"]
+        skill_text = (ROOT / "skills" / skill / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        assert "termination reason" in skill_text, case["id"]
+        if skill.startswith("bitrix24"):
+            assert "next" in skill_text and "`start`" in skill_text, case["id"]
+        if skill.startswith("amocrm"):
+            assert "verified same-origin" in skill_text, case["id"]
+
+
+def test_representative_eval_verification_contracts_reach_generated_artifacts() -> None:
+    document = json.loads(CASES_PATH.read_text(encoding="utf-8"))
+    cases = {case["id"]: case for case in document["cases"]}
+    contracts = {
+        "yandex-direct-list-campaigns": {
+            "verification": (
+                "Advance Page.Offset within bounds and return the terminal page."
+            ),
+            "artifacts": {
+                "skills/yandex-direct/SKILL.md": (
+                    "`Page.Offset`",
+                    "terminal page",
+                ),
+            },
+        },
+        "yandex-direct-update-campaign": {
+            "verification": (
+                "Read the campaign after success; after a dispatched timeout, "
+                "inspect state before any retry."
+            ),
+            "artifacts": {
+                "skills/yandex-direct/SKILL.md": (
+                    "After a confirmed mutation, read the campaign",
+                    "before any retry",
+                ),
+            },
+        },
+        "bitrix24-crm-list-leads": {
+            "verification": (
+                "Follow the Bitrix24 next/start offset within configured bounds."
+            ),
+            "artifacts": {
+                "skills/bitrix24-crm/SKILL.md": (
+                    "provider `next` value",
+                    "`start`",
+                ),
+            },
+        },
+        "bitrix24-crm-update-deal": {
+            "verification": (
+                "Read the deal after success; after a dispatched timeout, inspect "
+                "it before any retry."
+            ),
+            "artifacts": {
+                "skills/bitrix24-crm/SKILL.md": (
+                    '"path": "crm.deal.update"',
+                    "After a confirmed update, read the deal",
+                    "before any retry",
+                ),
+                "skills/bitrix24-crm/references/endpoints.md": (
+                    "crm.deal.update",
+                    "read the deal",
+                ),
+            },
+        },
+        "amocrm-crm-list-leads": {
+            "verification": (
+                "Follow only verified same-origin next links within bounds."
+            ),
+            "artifacts": {
+                "skills/amocrm-crm/SKILL.md": ("verified same-origin",),
+            },
+        },
+        "amocrm-chats-send-message": {
+            "verification": (
+                "Confirm the action message id; if dispatch is uncertain, inspect "
+                "chat state before retrying."
+            ),
+            "artifacts": {
+                "skills/amocrm-chats/SKILL.md": (
+                    "Confirm the returned message id",
+                    "inspect chat state",
+                ),
+                "skills/amocrm-chats/references/endpoints.md": (
+                    "`nango_action`",
+                    "`send-message`",
+                ),
+            },
+        },
+    }
+
+    for case_id, contract in contracts.items():
+        assert (
+            cases[case_id]["expected"]["verification_behavior"]
+            == contract["verification"]
+        )
+        for relative, fragments in contract["artifacts"].items():
+            text = (ROOT / relative).read_text(encoding="utf-8")
+            for fragment in fragments:
+                assert fragment in text, "{}: {}".format(case_id, fragment)

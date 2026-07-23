@@ -62,6 +62,10 @@ Use `nango_proxy_paginate` for bounded metadata listings. Use `nango_disk_transf
 
 Upload and download are mutations because they write either remote or local state. After upload, read `v1/disk/resources` for the remote path and compare metadata.
 
+### Pagination result contract
+
+Return the bounded pages and the tool's termination reason. If a configured page or item bound stops the read, report that bound instead of claiming the provider collection is complete.
+
 Request inputs are strict: relative `path`, ordered `query` pairs, bounded headers/body, and no caller-supplied auth, raw Nango control headers, approval proof, or operation classification fields.
 
 ## Operator-only fallback

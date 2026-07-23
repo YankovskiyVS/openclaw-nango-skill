@@ -179,6 +179,49 @@ def _generic_plugin_example(entry):
     ]
 
 
+def _pagination_guidance(entry):
+    mode = PAGINATION_MODES.get(entry["id"])
+    if mode is None:
+        return []
+
+    lines = [
+        "### Pagination result contract",
+        "",
+        "Return the bounded pages and the tool's termination reason. If a "
+        "configured page or item bound stops the read, report that bound instead "
+        "of claiming the provider collection is complete.",
+        "",
+    ]
+    if entry["family"] == "bitrix24":
+        lines.extend(
+            [
+                "For Bitrix24 `offset` pagination, use the provider `next` value "
+                "as the next request's `start`; stop at provider end or the "
+                "configured bounds.",
+                "",
+            ]
+        )
+    elif entry["family"] == "amocrm":
+        lines.extend(
+            [
+                "For amoCRM `link` pagination, follow only a verified same-origin "
+                "next link within the configured bounds. Never fetch an absolute "
+                "next URL directly.",
+                "",
+            ]
+        )
+    elif entry["id"] == "yandex-direct":
+        lines.extend(
+            [
+                "For Yandex Direct `body-offset` pagination, advance "
+                "`Page.Offset` by the preserved `Page.Limit`. Return the terminal "
+                "page and the termination reason.",
+                "",
+            ]
+        )
+    return lines
+
+
 def _special_guidance(entry):
     skill_id = entry["id"]
     if skill_id == "yandex-disk":
@@ -281,6 +324,36 @@ def _special_guidance(entry):
             "methods are mutations and require approval. For bounded listing, "
             "use `nango_proxy_paginate` with `body-offset` and preserve the "
             "request's `Page.Limit`.",
+            "",
+            "Use `nango_proxy_request` for a Direct mutation. After a confirmed "
+            "mutation, read the campaign with a `get` request and compare the "
+            "intended fields. If the outcome is `unknown`, including a dispatched "
+            "timeout, inspect campaign state before any retry.",
+            "",
+        ]
+    if skill_id == "bitrix24-crm":
+        return [
+            "### Deal update",
+            "",
+            "Use `nango_proxy_request` for a deal update:",
+            "",
+            "```json",
+            *_json_lines(
+                {
+                    "providerConfigKey": "bitrix24-crm",
+                    "method": "POST",
+                    "path": "crm.deal.update",
+                    "jsonBody": {
+                        "id": "<confirmed-deal-id>",
+                        "fields": {"TITLE": "<new-title>"},
+                    },
+                }
+            ),
+            "```",
+            "",
+            "After a confirmed update, read the deal through `crm.deal.get` and "
+            "compare the intended fields. If the outcome is `unknown`, including "
+            "a dispatched timeout, inspect the same deal before any retry.",
             "",
         ]
     if skill_id == "yandex-maps":
@@ -510,6 +583,7 @@ def render_skill(entry):
     )
     lines.extend(_generic_plugin_example(entry))
     lines.extend(_special_guidance(entry))
+    lines.extend(_pagination_guidance(entry))
     lines.extend(
         [
             "Request inputs are strict: relative `path`, ordered `query` pairs, "

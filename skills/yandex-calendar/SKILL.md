@@ -47,6 +47,10 @@ This is CalDAV, not a JSON calendar API. Use `PROPFIND` for discovery and `REPOR
 
 Creating or changing an `.ics` resource uses a mutating request and must be verified by reading its URL and ETag.
 
+### Pagination result contract
+
+Return the bounded pages and the tool's termination reason. If a configured page or item bound stops the read, report that bound instead of claiming the provider collection is complete.
+
 Request inputs are strict: relative `path`, ordered `query` pairs, bounded headers/body, and no caller-supplied auth, raw Nango control headers, approval proof, or operation classification fields.
 
 ## Operator-only fallback

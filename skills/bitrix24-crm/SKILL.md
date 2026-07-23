@@ -40,6 +40,32 @@ Use `nango_proxy_paginate` with:
 }
 ```
 
+### Deal update
+
+Use `nango_proxy_request` for a deal update:
+
+```json
+{
+  "providerConfigKey": "bitrix24-crm",
+  "method": "POST",
+  "path": "crm.deal.update",
+  "jsonBody": {
+    "id": "<confirmed-deal-id>",
+    "fields": {
+      "TITLE": "<new-title>"
+    }
+  }
+}
+```
+
+After a confirmed update, read the deal through `crm.deal.get` and compare the intended fields. If the outcome is `unknown`, including a dispatched timeout, inspect the same deal before any retry.
+
+### Pagination result contract
+
+Return the bounded pages and the tool's termination reason. If a configured page or item bound stops the read, report that bound instead of claiming the provider collection is complete.
+
+For Bitrix24 `offset` pagination, use the provider `next` value as the next request's `start`; stop at provider end or the configured bounds.
+
 Request inputs are strict: relative `path`, ordered `query` pairs, bounded headers/body, and no caller-supplied auth, raw Nango control headers, approval proof, or operation classification fields.
 
 ## Operator-only fallback
@@ -57,7 +83,7 @@ The fallback preserves the full generic HTTP flags documented in `{baseDir}/refe
 
 ## Notes
 
-Requires OAuth connection for provider_config_key bitrix24-crm.
+Requires OAuth connection for provider_config_key bitrix24-crm. Primary deal updates use nango_proxy_request with crm.deal.update; after confirmed success, read the deal with crm.deal.get, and after an uncertain dispatch inspect it before retrying.
 
 ## References
 

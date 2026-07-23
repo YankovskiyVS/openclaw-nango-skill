@@ -16,4 +16,4 @@ python3 {baseDir}/scripts/nango_proxy.py call yandex-direct json/v5/campaigns --
 
 ## Notes
 
-Nango injects the provider credential. The caller must not supply or override auth and Nango control headers.
+Nango injects the provider credential. The caller must not supply or override auth and Nango control headers. After a confirmed Direct mutation, read the campaign and compare intended fields; after an uncertain dispatch, inspect campaign state before retrying.

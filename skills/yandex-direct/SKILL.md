@@ -58,6 +58,14 @@ Use `nango_proxy_paginate` with:
 
 Yandex Direct reads use HTTP `POST`. A body with `"method": "get"` on `json/v5/<service>` is a semantic read; other methods are mutations and require approval. For bounded listing, use `nango_proxy_paginate` with `body-offset` and preserve the request's `Page.Limit`.
 
+Use `nango_proxy_request` for a Direct mutation. After a confirmed mutation, read the campaign with a `get` request and compare the intended fields. If the outcome is `unknown`, including a dispatched timeout, inspect campaign state before any retry.
+
+### Pagination result contract
+
+Return the bounded pages and the tool's termination reason. If a configured page or item bound stops the read, report that bound instead of claiming the provider collection is complete.
+
+For Yandex Direct `body-offset` pagination, advance `Page.Offset` by the preserved `Page.Limit`. Return the terminal page and the termination reason.
+
 Request inputs are strict: relative `path`, ordered `query` pairs, bounded headers/body, and no caller-supplied auth, raw Nango control headers, approval proof, or operation classification fields.
 
 ## Operator-only fallback
@@ -73,7 +81,7 @@ The fallback preserves the full generic HTTP flags documented in `{baseDir}/refe
 
 ## Notes
 
-Nango injects the provider credential. The caller must not supply or override auth and Nango control headers.
+Nango injects the provider credential. The caller must not supply or override auth and Nango control headers. After a confirmed Direct mutation, read the campaign and compare intended fields; after an uncertain dispatch, inspect campaign state before retrying.
 
 ## References
 
