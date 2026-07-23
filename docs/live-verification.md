@@ -142,9 +142,12 @@ Use small fixtures inside dedicated configured roots:
 2. Download it to a new path and compare size/SHA-256.
 3. Attempt traversal, a symlink path, overwrite without the intended flag and
    a file outside the root; each must fail locally.
-4. Verify redirects remain within configured Yandex transfer suffixes and
+4. Temporarily make a dedicated test root group- or world-writable and confirm
+   the transfer fails with `unsafe_local_path` before any network request;
+   restore its original mode immediately afterward.
+5. Verify redirects remain within configured Yandex transfer suffixes and
    resolve only to public addresses.
-5. Interrupt a download and confirm no partial destination is published.
+6. Interrupt a download and confirm no partial destination is published.
 
 Disk transfer never returns the pre-signed transfer URL to the model and never
 forwards Cloud.ru or Nango headers to the transfer host.

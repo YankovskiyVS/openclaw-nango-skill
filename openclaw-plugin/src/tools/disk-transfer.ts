@@ -76,6 +76,8 @@ export type DirectTransferTransport = Readonly<{
 export type DiskFileStats = Readonly<{
   dev: number | bigint;
   ino: number | bigint;
+  mode: number;
+  uid: number;
   size: number | bigint;
   mtimeMs: number;
   isSymbolicLink(): boolean;
@@ -535,17 +537,91 @@ function errorCode(error: unknown): string | undefined {
     : undefined;
 }
 
+function effectiveUserId(): number {
+  if (typeof process.geteuid !== "function") {
+    throw new DiskTransferError("local_io", "unsafe_local_path");
+  }
+  const value = process.geteuid();
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new DiskTransferError("local_io", "unsafe_local_path");
+  }
+  return value;
+}
+
+function isTrustedDirectory(
+  stats: DiskFileStats,
+  effectiveUid: number,
+): boolean {
+  return (
+    !stats.isSymbolicLink() &&
+    stats.isDirectory() &&
+    Number.isSafeInteger(stats.mode) &&
+    Number.isSafeInteger(stats.uid) &&
+    (stats.uid === 0 || stats.uid === effectiveUid) &&
+    (stats.mode & 0o022) === 0
+  );
+}
+
+async function assertTrustedDirectoryChain(
+  fileSystem: DiskFileSystem,
+  canonicalRoot: string,
+  effectiveUid: number,
+): Promise<void> {
+  const filesystemRoot = path.parse(canonicalRoot).root;
+  const relative = path.relative(filesystemRoot, canonicalRoot);
+  const segments = relative === "" ? [] : relative.split(path.sep);
+  let current = filesystemRoot;
+  try {
+    if (
+      !isTrustedDirectory(
+        await fileSystem.lstat(current),
+        effectiveUid,
+      )
+    ) {
+      throw new DiskTransferError(
+        "local_io",
+        "unsafe_local_path",
+      );
+    }
+    for (const segment of segments) {
+      current = path.join(current, segment);
+      if (
+        !isTrustedDirectory(
+          await fileSystem.lstat(current),
+          effectiveUid,
+        )
+      ) {
+        throw new DiskTransferError(
+          "local_io",
+          "unsafe_local_path",
+        );
+      }
+    }
+  } catch (error) {
+    if (error instanceof DiskTransferError) {
+      throw error;
+    }
+    throw new DiskTransferError("local_io", "unsafe_local_path");
+  }
+}
+
 async function inspectLocalPath(
   fileSystem: DiskFileSystem,
   resolved: ResolvedLocalPath,
   direction: Direction,
   overwrite: boolean,
 ): Promise<void> {
+  const effectiveUid = effectiveUserId();
   const rootStats = await fileSystem.lstat(resolved.root);
-  if (rootStats.isSymbolicLink() || !rootStats.isDirectory()) {
+  if (!isTrustedDirectory(rootStats, effectiveUid)) {
     throw new DiskTransferError("local_io", "unsafe_local_path");
   }
   const canonicalRoot = await fileSystem.realpath(resolved.root);
+  await assertTrustedDirectoryChain(
+    fileSystem,
+    canonicalRoot,
+    effectiveUid,
+  );
 
   const relative = path.relative(resolved.root, resolved.candidate);
   const segments = relative.split(path.sep);
@@ -576,6 +652,9 @@ async function inspectLocalPath(
       (final && direction === "upload" && !stats.isFile()) ||
       (final && direction === "download" && stats.isDirectory())
     ) {
+      throw new DiskTransferError("local_io", "unsafe_local_path");
+    }
+    if (!final && !isTrustedDirectory(stats, effectiveUid)) {
       throw new DiskTransferError("local_io", "unsafe_local_path");
     }
     if (final && direction === "download" && !overwrite) {

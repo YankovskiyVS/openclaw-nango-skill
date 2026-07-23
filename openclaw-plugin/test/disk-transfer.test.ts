@@ -1,11 +1,13 @@
 import { constants as fsConstants } from "node:fs";
 import { createHash } from "node:crypto";
 import {
+  chmod,
   lstat,
   mkdir,
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rename,
   rm,
   stat,
@@ -401,7 +403,7 @@ describe("approval and local path boundary", () => {
     const deps = dependencies({
       fileSystem: {
         lstat,
-        realpath: vi.fn(async (value: string) => value),
+        realpath: vi.fn(realpath),
         open,
         rename: vi.fn(),
         link: vi.fn(),
@@ -419,6 +421,31 @@ describe("approval and local path boundary", () => {
       source,
       fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,
     );
+  });
+
+  test("rejects a transfer root writable by another OS identity", async () => {
+    const roots = await temporaryRoots();
+    const source = path.join(roots.uploadRoot, "shared-source.bin");
+    await writeFile(source, "must-not-leave-this-root");
+    await chmod(roots.uploadRoot, 0o777);
+    const deps = dependencies();
+    const executor = createDiskTransferExecutor(
+      runtimeConfig(roots.uploadRoot, roots.downloadRoot),
+      deps.value,
+    );
+
+    const result = await executor.execute(
+      "tool-call-shared-root",
+      uploadParams(source),
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { layer: "local_io", code: "unsafe_local_path" },
+      outcome: "not_started",
+    });
+    expect(deps.proxyClient.request).not.toHaveBeenCalled();
+    expect(deps.transferTransport.request).not.toHaveBeenCalled();
   });
 });
 
