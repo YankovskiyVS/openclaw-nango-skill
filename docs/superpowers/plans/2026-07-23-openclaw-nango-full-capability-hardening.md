@@ -14,8 +14,9 @@ cover special HTTP authentication and orchestrate a narrow HTTPS mail bridge;
 the bridge owns Yandex IMAP/SMTP because Nango Functions cannot import TCP/TLS
 clients.
 
-**Stack:** Python 3.10+, pytest, httpx; Node 22+, TypeScript ESM, TypeBox,
-Vitest; Nango Action Functions with Zod.
+**Stack:** Python 3.10+, pytest, httpx; Node 22.19+ for the plugin, TypeScript
+ESM, TypeBox, Vitest; Node 22.22.2+ with pinned `nango` 0.71.2 and Zod 4.3.6
+for Nango Action Functions.
 
 ## Execution rules
 
@@ -324,7 +325,9 @@ guarantee without mutating the process-wide Undici dispatcher.
 
 **RED / GREEN slices:**
 
-1. Test only registered provider/action pairs are callable.
+1. Test only registered provider/action pairs are callable. Registry entries
+   may select a fixed internal transport integration key distinct from the
+   model-visible catalog key; the caller cannot override it.
 2. Test recommended proxy mode uses one exact configured endpoint, the
    Cloud.ru API key, derived connection and the documented bounded
    request/response envelope. Return `capability_unavailable` when no compatible
@@ -361,17 +364,24 @@ guarantee without mutating the process-wide Undici dispatcher.
 
 **RED / GREEN slices:**
 
-1. Test Zod inputs/outputs and bounded message/attachment metadata.
-2. Test the action accepts no bridge URL, connection override or credentials;
-   it uses only a validated HTTPS origin and HMAC secret from Nango environment
+1. Pin the current `nango`/Zod toolchain, require Node `>=22.22.2`, use
+   `createAction`, and test that the root index side-effect imports every
+   action with the expected directory/basename identity.
+2. Test Zod inputs/outputs and bounded message/attachment metadata.
+3. Test the action accepts no bridge URL, mailbox, connection override or
+   credentials; it gets the full mailbox from Nango connection configuration
+   and uses only a validated HTTPS origin and HMAC secret from Nango environment
    configuration.
-3. Test bridge HMAC freshness and rejection of forged/replayed requests before
-   any IMAP/SMTP connection.
-4. Test the bridge accepts the injected access token without returning/logging
+4. Test the exact body-digest/HMAC canonical bytes, freshness and atomic
+   rejection of forged/replayed requests before JSON parsing or any IMAP/SMTP
+   connection. Require a shared replay store for multi-replica mode.
+5. Test the bridge accepts the injected access token without returning/logging
    it and pins outbound hosts/ports to Yandex.
-5. Test IMAP list/search/fetch mapping with mocked socket-library boundaries.
-6. Test SMTP send, Message-ID result and idempotency marker behavior.
-7. Test connection/runtime/bridge errors produce safe stable errors.
+6. Test IMAP list/search/fetch mapping with mocked socket-library boundaries
+   using the configured full mailbox, including a custom-domain address.
+7. Test SMTP send, Message-ID result, shared idempotency ledger and
+   post-dispatch unknown-outcome behavior with no automatic retry.
+8. Test connection/runtime/bridge errors produce safe stable errors.
 
 Do not deploy or run `nango dryrun` without operator credentials.
 
@@ -379,17 +389,27 @@ Do not deploy or run `nango dryrun` without operator credentials.
 
 **Files:**
 
-- Create: `nango-integrations/amocrm-chats/actions/send-message.ts`
-- Create: `nango-integrations/amocrm-chats/lib/signature.ts`
-- Create: `nango-integrations/test/amocrm-chats.test.ts`
+- Create: `nango-integrations/amocrm-chats-channel/actions/send-message.ts`
+- Create: `nango-integrations/amocrm-chats-channel/lib/signature.ts`
+- Create: `nango-integrations/test/amocrm-chats-channel.test.ts`
 - Modify: `nango-integrations/index.ts`
+- Modify: `openclaw-plugin/src/action-registry.ts`
 
 **RED / GREEN slices:**
 
-1. Test canonical request bytes and known HMAC fixtures.
-2. Test channel credentials are read inside the Nango connection and never
-   emitted.
-3. Test send schema, idempotency id, response validation and safe failures.
+1. Preserve OAuth `amocrm-chats` `/api/v4/talks` reads and test that the
+   model-visible send action maps to the fixed internal
+   `amocrm-chats-channel` integration; reject caller overrides.
+2. Test the exact documented canonical request bytes and known fixtures:
+   RFC2822 Date, `application/json`, lowercase MD5 of the one serialized body,
+   `METHOD\nMD5\nCONTENT_TYPE\nDATE\nPATH`, and lowercase HMAC-SHA1.
+3. Test the channel secret and `scope_id` are read from the internal Nango
+   connection, never emitted, and the request is pinned to the code-selected
+   `amojo.amocrm.ru` or `amojo.amocrm.com` origin.
+4. Test send schema, unique `msgid` idempotency, zero retries, response
+   validation, post-dispatch unknown outcome and safe failures.
+5. Document that receiving channel webhooks requires a separate raw-body
+   HMAC-SHA1 receiver and is not implemented or claimed by this repository.
 
 ## Task 13: Rewrite and generate all 25 skills
 
@@ -460,7 +480,8 @@ Document:
 **CI lanes:**
 
 1. Python 3.10/3.12 tests and skill/generator validation.
-2. Node 22 install, TypeScript typecheck, Vitest and production build.
+2. Node 22.22.2 install, TypeScript typecheck, Vitest and production build
+   (the plugin itself retains its lower Node 22.19 runtime floor).
 3. Nango action typecheck/tests without deploy.
 4. Mail bridge typecheck/tests and container build validation without deploy.
 5. Git diff check after generation.

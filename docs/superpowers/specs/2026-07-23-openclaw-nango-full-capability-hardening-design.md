@@ -124,9 +124,11 @@ provider origin.
 
 ### `nango_action`
 
-Triggers a named Nango Action Function for the same catalog provider and
-derived connection id. It is used for Yandex Mail IMAP/SMTP and amoCRM Chats
-HMAC operations.
+Triggers a named Nango Action Function for the derived connection id. The
+registry normally uses the catalog provider key, but may select a fixed
+code-owned internal integration key when an action needs a different credential
+type. The model cannot choose or override that transport key. This is used for
+Yandex Mail IMAP/SMTP and amoCRM Chats channel-HMAC operations.
 
 The action transport has two explicit modes:
 
@@ -313,8 +315,11 @@ Special adapters:
 - Yandex Mail actions plus the HTTPS mail bridge: resolve mailbox identity,
   list/search/fetch messages and send mail through IMAP/SMTP OAuth without
   exposing the token to the model.
-- amoCRM Chats actions: send and receive chat messages with the required HMAC
-  signature and channel credentials stored in the Nango connection.
+- amoCRM Chats: preserve OAuth reads of `/api/v4/talks` on the existing
+  `amocrm-chats` connection; send channel messages through a separate internal
+  `amocrm-chats-channel` Action integration whose connection stores the HMAC
+  channel credential. Inbound channel webhooks are not invented by this
+  repository and are documented as a separate operator integration.
 - Yandex Disk transfer: upload and download streams.
 
 Where no supported public provider API can be confirmed, the skill must say so
@@ -349,21 +354,38 @@ and recreating directories blindly.
 Action code is source-controlled but never deployed automatically.
 
 - Input and output use Zod schemas.
-- Functions are imported from `nango-integrations/index.ts`.
+- Functions use the current `createAction` API and are imported for side
+  effects from `nango-integrations/index.ts`; action names come from file
+  basenames and integration ids from directories.
 - Nango actions use only runtime-allowed imports. Arbitrary npm modules and
   direct TCP/TLS are not assumed available.
 - The Yandex Mail action calls one strictly validated HTTPS bridge origin from
   Nango environment configuration. A separate HMAC authenticates the action to
   the bridge; the model cannot override the bridge URL.
+- Mailbox identity is a full address stored in Nango connection configuration,
+  not guessed as `login@yandex.ru` and not taken from model input. This covers
+  Yandex 360 custom domains without requiring a broader identity scope.
 - Nango credential injection deliberately sends the fresh Yandex access token
   to that trusted bridge. Documentation must describe this trust boundary and
   must not claim that the token stays inside Nango.
+- The action signs the exact serialized request once as
+  `v1\nPOST\n<path>\n<unix-seconds>\n<nonce>\n<sha256(body)>`. The bridge
+  verifies content digest, HMAC, timestamp and a 128-bit-or-larger nonce before
+  parsing JSON or opening provider connections. Replay claims use shared
+  storage for multi-replica deployment; an in-memory store is explicitly
+  single-replica only.
 - The bridge pins IMAP/SMTP hosts and ports to Yandex, uses pinned
   `imapflow`/`nodemailer` dependencies, enforces request/response caps and never
   logs authorization headers or message bodies.
+- The amoCRM channel action serializes the body once and implements the
+  documented `METHOD\nMD5\nCONTENT_TYPE\nDATE\nPATH` canonical form with
+  lowercase MD5 and HMAC-SHA1 hex values. It pins the `amojo` origin selected by
+  code-owned connection configuration and never accepts a URL or credential
+  from tool input.
 - No token, password or channel secret is returned or logged.
-- Send operations accept an idempotency key and store a short-lived result
-  marker in connection metadata when supported.
+- Send operations accept an idempotency key, disable automatic retries and use
+  a shared result ledger. A timeout after SMTP DATA or channel dispatch is an
+  unknown outcome that must be checked before any repeat.
 - Action output is kept below Nango's 2 MB limit; large attachments and message
   bodies are returned as metadata or streamed through a different path.
 
@@ -411,7 +433,8 @@ never presented as passing unless credentials were used in that run.
 ## Compatibility and rollout
 
 - Minimum OpenClaw version: `2026.6.11`.
-- Minimum Node version: `22.19`.
+- Minimum Node version for the plugin: `22.19`.
+- Minimum Node version for the pinned Nango Functions workspace: `22.22.2`.
 - Python compatibility client: Python 3.10+ with `httpx`.
 - The plugin is disabled until installed and enabled by the operator.
 - All four plugin tools are optional in the manifest and require explicit
