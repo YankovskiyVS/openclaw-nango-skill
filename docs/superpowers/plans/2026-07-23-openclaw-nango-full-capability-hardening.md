@@ -63,8 +63,10 @@ Vitest; Nango Action Functions with Zod.
 
 1. Test and implement strict proxy URL, provider, relative path and query
    validation.
-2. Test and implement blocked credential/hop-by-hop headers and CR/LF
-   rejection.
+2. Test and implement blocked credential/routing/method-override/hop-by-hop
+   headers and HTTP control-byte rejection. Apply the deny rules recursively
+   to effective names behind `Nango-Proxy-` while preserving safe passthrough
+   headers.
 3. Test and implement mutually exclusive JSON/text/file bodies and bounded
    request size.
 4. Test and implement no redirects for credential-bearing proxy requests.
@@ -210,7 +212,9 @@ Run the matching test after each slice and the plugin suite at task end.
 
 **RED / GREEN slices:**
 
-1. Test safe URL construction and derived connection ids.
+1. Test safe URL construction, derived connection ids, and exact parity with
+   the Python route
+   `<proxy-base>/api/v1/<project>/evo-claws/<evo>/proxy/<provider>/<path>`.
 2. Test credentials are injected from runtime config, not tool parameters.
 3. Test redirect rejection and complete response-header redaction.
 4. Test JSON, text, binary and oversized responses.
@@ -241,11 +245,15 @@ guarantee without mutating the process-wide Undici dispatcher.
 
 **RED**
 
-1. Test read methods return no approval.
+1. Test ordinary read methods return no approval, while known or unknown
+   Bitrix24 method-style mutators, mixed/unparseable `batch` calls and method
+   override attempts cannot use `GET` to bypass approval.
 2. Test every mutation returns only `allow-once|deny`, bounded title and
    description, derived target, correct severity and no payload/secrets.
 3. Test malformed/unknown params are synchronously blocked rather than thrown.
-4. Test action registry and disk transfers cannot misclassify writes as reads.
+4. Test action registry, semantic pagination registry and disk transfers cannot
+   misclassify writes as reads. Cover Yandex Direct `POST method=get` as read,
+   Direct writes and Yandex Delivery create as mutations.
 5. Test missing, forged, altered and replayed one-time approval proofs block
    execution before any I/O.
 
@@ -279,7 +287,10 @@ guarantee without mutating the process-wide Undici dispatcher.
 3. Test Bitrix24 `next/start`, Disk `offset/total` and Direct
    `Page.Offset/LimitedBy` termination.
 4. Test hard `maxPages`/`maxItems` caps and repeated-page loop detection.
-5. Test pagination is read-only even when the underlying read API uses POST.
+5. Test pagination accepts only registered semantic read contracts even when a
+   read API uses POST: Yandex Direct requires JSON-RPC `method: get`; Delivery
+   create, Direct writes, Bitrix24 mutators and mixed/unparseable Bitrix24
+   batches are rejected from the read-only surface.
 
 ## Task 9: Implement Yandex Disk streaming transfers
 

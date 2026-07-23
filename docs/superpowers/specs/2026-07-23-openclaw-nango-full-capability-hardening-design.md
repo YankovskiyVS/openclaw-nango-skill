@@ -93,8 +93,10 @@ Inputs:
   `PROPFIND` or `REPORT`.
 - `path`: relative provider path.
 - `query`: ordered key/value pairs. Repeated names are allowed.
-- `headers`: provider headers. Credential, routing and hop-by-hop headers are
-  rejected.
+- `headers`: provider headers. Credential, routing, method-override and
+  hop-by-hop headers are rejected, including dangerous effective names hidden
+  behind one or more `Nango-Proxy-` passthrough prefixes. Safe provider
+  passthrough headers remain available.
 - exactly one of `jsonBody`, `textBody` or `base64Body`.
 - `contentType`, when a non-JSON body is used.
 - `timeoutMs`, bounded by plugin configuration.
@@ -105,8 +107,9 @@ Yandex Calendar CalDAV.
 
 ### `nango_proxy_paginate`
 
-Performs bounded read-only pagination and returns normalized pages plus the
-provider responses. Supported modes:
+Performs bounded read-only pagination for registered semantic read contracts
+and returns normalized pages plus the provider responses. It is not a generic
+escape hatch for arbitrary `POST` requests. Supported modes:
 
 - `link`: follow a same-origin response link such as amoCRM `_links.next.href`;
 - `offset`: update an offset or start parameter, including Bitrix24 `next`;
@@ -170,9 +173,15 @@ Every redirect is revalidated; an arbitrary public HTTPS URL is not sufficient.
 
 The plugin registers a `before_tool_call` hook.
 
-- `GET`, `HEAD`, `OPTIONS`, `PROPFIND` and `REPORT` are read operations and do
-  not prompt.
+- `GET`, `HEAD`, `OPTIONS`, `PROPFIND` and `REPORT` are normally read
+  operations, but the provider/path classifier wins over the HTTP verb.
+  Bitrix24 method-style mutators and mixed or unparseable `batch` calls require
+  approval even when invoked with `GET`; unknown Bitrix24 method-style calls
+  fail toward approval rather than toward read.
 - `POST`, `PUT`, `PATCH` and `DELETE` always request approval.
+- The pagination tool accepts only registered semantic reads. This includes
+  Yandex Direct `POST` requests whose validated JSON-RPC method is exactly
+  `get`; it rejects Direct writes, Delivery create calls and Bitrix24 mutators.
 - `nango_action` consults registry metadata; read actions do not prompt and
   mutating actions do.
 - every `nango_disk_transfer` call prompts because it writes provider or local
@@ -211,12 +220,19 @@ enforce:
 - no absolute provider URL, fragment, user-info, backslash, empty segment
   trick, decoded `.`/`..` segment or encoded slash/backslash;
 - URL-encoding of project, EvoClaw, provider, path and query components;
+- the production Cloud.ru route shape
+  `<proxy-base>/api/v1/<project>/evo-claws/<evo>/proxy/<provider>/<path>`,
+  kept byte-for-byte compatible with the Python client;
 - proxy base URL limited to `http` or `https`, without credentials, query or
   fragment;
 - blocked request headers: `authorization`, `proxy-authorization`, `cookie`,
   `set-cookie`, `host`, `connection`, `transfer-encoding`, `content-length`,
-  `x-nango-*` and Cloud.ru credential headers;
-- CR/LF rejection in every header name and value;
+  Nango routing/control headers, method-override headers, `x-nango-*` and
+  Cloud.ru credential headers. The same deny rules apply recursively after
+  stripping any `Nango-Proxy-` passthrough prefixes, while safe passthrough
+  headers are preserved;
+- HTTP control-byte rejection in every header name, header value and secret
+  used as a header;
 - bounded request bodies, timeouts, redirects and responses.
 
 The proxy request itself does not follow redirects. A redirect is returned as a
