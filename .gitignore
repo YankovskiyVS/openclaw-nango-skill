@@ -10,11 +10,14 @@
 .netrc
 __pycache__/
 *.pyc
+.pytest_cache/
 .Python
 .venv/
 venv/
 
 node_modules/
 openclaw-plugin/dist/
+nango-integrations/dist/
+mail-bridge/dist/
 
 *.log
