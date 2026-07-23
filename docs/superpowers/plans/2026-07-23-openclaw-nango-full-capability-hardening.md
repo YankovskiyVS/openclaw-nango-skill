@@ -10,7 +10,9 @@ special Nango adapters and repeatable tests.
 **Architecture:** A mixed TypeScript OpenClaw plugin owns runtime enforcement.
 Generated skills contain concise provider workflows and progressive references.
 The Python CLI remains a tested compatibility client. Nango Action Functions
-cover protocols that the HTTP proxy cannot execute.
+cover special HTTP authentication and orchestrate a narrow HTTPS mail bridge;
+the bridge owns Yandex IMAP/SMTP because Nango Functions cannot import TCP/TLS
+clients.
 
 **Stack:** Python 3.10+, pytest, httpx; Node 22+, TypeScript ESM, TypeBox,
 Vitest; Nango Action Functions with Zod.
@@ -206,13 +208,17 @@ envelope and policy, not mock call counts alone.
    description, derived target, correct severity and no payload/secrets.
 3. Test malformed/unknown params are synchronously blocked rather than thrown.
 4. Test action registry and disk transfers cannot misclassify writes as reads.
+5. Test missing, forged, altered and replayed one-time approval proofs block
+   execution before any I/O.
 
 **GREEN**
 
 1. Implement a synchronous, no-I/O `before_tool_call` policy.
 2. Catch all internal classification errors and return `block: true`.
-3. Set approval timeout to 120 seconds and explicitly fail closed.
-4. Register tools and the hook only after the pure policy tests pass.
+3. Set approval timeout to 120 seconds, omit legacy `timeoutBehavior`, and
+   attach a one-time HMAC proof only through post-approval params.
+4. Verify and atomically consume the proof inside mutating tool execution.
+5. Register tools and the hook only after the pure policy tests pass.
 
 ## Task 8: Implement generic request and pagination tools
 
@@ -271,7 +277,7 @@ envelope and policy, not mock call counts alone.
 4. Test action input/output limits, safe errors and mutation classification.
 5. Test no secret appears in approval text, request summaries or results.
 
-## Task 11: Add Nango Yandex Mail actions
+## Task 11: Add Nango Yandex Mail actions and HTTPS bridge
 
 **Files:**
 
@@ -282,17 +288,30 @@ envelope and policy, not mock call counts alone.
 - Create: `nango-integrations/yandex-mail/actions/list-messages.ts`
 - Create: `nango-integrations/yandex-mail/actions/get-message.ts`
 - Create: `nango-integrations/yandex-mail/actions/send-message.ts`
-- Create: `nango-integrations/yandex-mail/lib/mail.ts`
+- Create: `nango-integrations/yandex-mail/lib/bridge.ts`
 - Create: `nango-integrations/test/yandex-mail.test.ts`
+- Create: `mail-bridge/package.json`
+- Create: `mail-bridge/tsconfig.json`
+- Create: `mail-bridge/src/auth.ts`
+- Create: `mail-bridge/src/mail.ts`
+- Create: `mail-bridge/src/server.ts`
+- Create: `mail-bridge/test/auth.test.ts`
+- Create: `mail-bridge/test/mail.test.ts`
+- Create: `mail-bridge/Dockerfile`
 
 **RED / GREEN slices:**
 
 1. Test Zod inputs/outputs and bounded message/attachment metadata.
-2. Test XOAUTH2 uses a fresh token from `nango.getConnection()` and never
-   returns/logs it.
-3. Test IMAP list/search/fetch mapping with mocked transport boundaries.
-4. Test SMTP send, Message-ID result and idempotency marker behavior.
-5. Test connection/runtime errors produce safe stable errors.
+2. Test the action accepts no bridge URL, connection override or credentials;
+   it uses only a validated HTTPS origin and HMAC secret from Nango environment
+   configuration.
+3. Test bridge HMAC freshness and rejection of forged/replayed requests before
+   any IMAP/SMTP connection.
+4. Test the bridge accepts the injected access token without returning/logging
+   it and pins outbound hosts/ports to Yandex.
+5. Test IMAP list/search/fetch mapping with mocked socket-library boundaries.
+6. Test SMTP send, Message-ID result and idempotency marker behavior.
+7. Test connection/runtime/bridge errors produce safe stable errors.
 
 Do not deploy or run `nango dryrun` without operator credentials.
 
@@ -381,7 +400,8 @@ Document:
 1. Python 3.10/3.12 tests and skill/generator validation.
 2. Node 22 install, TypeScript typecheck, Vitest and production build.
 3. Nango action typecheck/tests without deploy.
-4. Git diff check after generation.
+4. Mail bridge typecheck/tests and container build validation without deploy.
+5. Git diff check after generation.
 
 **Final local commands:**
 

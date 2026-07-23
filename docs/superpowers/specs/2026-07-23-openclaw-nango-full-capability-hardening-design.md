@@ -28,13 +28,15 @@ Cloud.ru API key to the model, tool result, process arguments or logs.
 
 ## Package shape
 
-The repository ships three coordinated layers:
+The repository ships four coordinated layers:
 
 1. `openclaw-plugin/` — a TypeScript ESM mixed OpenClaw plugin.
 2. `skills/` — the existing 25 generated Agent Skills, rewritten to call the
    plugin tools and to describe provider-specific workflows.
 3. `nango-integrations/` — optional Nango Action Functions for protocols and
    authentication schemes that cannot be expressed by the HTTP proxy.
+4. `mail-bridge/` — a narrowly scoped HTTPS service that performs Yandex
+   IMAP/SMTP operations outside the Nango Functions runtime.
 
 The existing Python client stays as a diagnostic and compatibility interface.
 It is hardened and tested, but skills no longer make shell execution their
@@ -47,6 +49,9 @@ The plugin registers four typed tools.
 ### `nango_proxy_request`
 
 Calls an arbitrary relative provider path through the existing Cloud.ru proxy.
+Known provider recipes use a static operation registry, while this generic
+surface remains available so the hardening does not remove currently
+advertised HTTP methods or customer-specific endpoints.
 
 Inputs:
 
@@ -99,6 +104,12 @@ Direct mode is disabled unless the operator configures it. Secrets are read
 inside `execute`, never accepted as tool parameters, and never returned.
 Action names are restricted to the registry shipped with the plugin.
 
+Yandex Mail actions do not open IMAP/SMTP sockets themselves. Nango's current
+Functions compiler rejects arbitrary third-party modules and does not allow
+`node:net` or `node:tls`. The actions therefore validate input and call the
+fixed HTTPS mail bridge with `baseUrlOverride`; Nango injects the current
+connection credential only for that trusted bridge origin.
+
 ### `nango_disk_transfer`
 
 Streams a Yandex Disk upload or download without returning a presigned URL to
@@ -126,9 +137,20 @@ Approval requests contain an action, provider, bounded target and risk summary
 derived from the validated tool parameters. They never use model-authored
 approval text and never include secret or full private payload values.
 
-Only `allow-once` and `deny` are offered. The timeout is 120 seconds and
-`timeoutBehavior` is `deny`. If no approval route exists, the call fails
-closed. Approval applies only to the exact parameters of that tool call.
+Only `allow-once` and `deny` are offered. The timeout is 120 seconds.
+`timeoutBehavior` is omitted: current OpenClaw defaults to deny, while older
+runtime versions still honor the dangerous legacy value `allow`. If no
+approval route exists, the call fails closed. Approval applies only to the
+exact parameters of that tool call.
+
+The policy hook is synchronous and performs no I/O. It rejects unknown or
+malformed calls instead of throwing. Because an individual hook-handler timeout
+can otherwise let the hook runner continue, every mutating tool also requires a
+one-time process-local HMAC proof over tool name, tool-call id and canonical
+business parameters. The hook inserts this proof through post-approval
+parameter replacement. `execute` atomically verifies and consumes it before
+network or filesystem I/O. Missing, forged, modified or replayed proof fails
+closed.
 
 The severity is:
 
@@ -219,8 +241,9 @@ method or path is removed.
 
 Special adapters:
 
-- Yandex Mail actions: resolve mailbox identity, list/search messages, fetch a
-  message and send mail with attachments through IMAP/SMTP XOAUTH2.
+- Yandex Mail actions plus the HTTPS mail bridge: resolve mailbox identity,
+  list/search/fetch messages and send mail through IMAP/SMTP OAuth without
+  exposing the token to the model.
 - amoCRM Chats actions: send and receive chat messages with the required HMAC
   signature and channel credentials stored in the Nango connection.
 - Yandex Disk transfer: upload and download streams.
@@ -252,15 +275,23 @@ Examples use tool-call JSON rather than fragile cwd-relative shell commands.
 The generator performs a check mode that fails on drift instead of deleting
 and recreating directories blindly.
 
-## Nango Action Functions
+## Nango Action Functions and mail bridge
 
 Action code is source-controlled but never deployed automatically.
 
 - Input and output use Zod schemas.
 - Functions are imported from `nango-integrations/index.ts`.
-- Mail dependencies are pinned.
-- Access tokens are fetched inside the function execution and used only for the
-  provider connection.
+- Nango actions use only runtime-allowed imports. Arbitrary npm modules and
+  direct TCP/TLS are not assumed available.
+- The Yandex Mail action calls one strictly validated HTTPS bridge origin from
+  Nango environment configuration. A separate HMAC authenticates the action to
+  the bridge; the model cannot override the bridge URL.
+- Nango credential injection deliberately sends the fresh Yandex access token
+  to that trusted bridge. Documentation must describe this trust boundary and
+  must not claim that the token stays inside Nango.
+- The bridge pins IMAP/SMTP hosts and ports to Yandex, uses pinned
+  `imapflow`/`nodemailer` dependencies, enforces request/response caps and never
+  logs authorization headers or message bodies.
 - No token, password or channel secret is returned or logged.
 - Send operations accept an idempotency key and store a short-lived result
   marker in connection metadata when supported.
@@ -295,12 +326,14 @@ TypeScript plugin:
 - disk transfer origin/header isolation;
 - mocked proxy and Nango action responses.
 
-Nango actions:
+Nango actions and bridge:
 
 - schema validation;
 - XOAUTH2/HMAC construction without secret leakage;
 - message parsing and output caps;
 - idempotency behavior.
+- bridge host/port allowlists, action HMAC freshness and rejection of forged
+  requests.
 
 CI runs Python tests, skill validation, TypeScript typecheck/lint/tests, package
 build and a clean-generation check. Live provider tests are separate and are
@@ -308,7 +341,7 @@ never presented as passing unless credentials were used in that run.
 
 ## Compatibility and rollout
 
-- Minimum OpenClaw version: `2026.5.17`.
+- Minimum OpenClaw version: `2026.6.11`.
 - Minimum Node version: `22.19`.
 - Python compatibility client: Python 3.10+ with `httpx`.
 - The plugin is disabled until installed and enabled by the operator.
@@ -332,7 +365,7 @@ never presented as passing unless credentials were used in that run.
 7. Pagination cannot escape the configured provider origin and respects hard
    page/item limits.
 8. A dispatched mutation timeout returns an unknown outcome and is not retried.
-9. Yandex Mail and amoCRM Chats ship callable adapter code and offline tests;
-   docs clearly mark live deployment/credential proof as outstanding until it
-   is actually performed.
+9. Yandex Mail actions, the mail bridge and amoCRM Chats ship callable adapter
+   code and offline tests; docs clearly mark live deployment/credential proof
+   as outstanding until it is actually performed.
 10. `.env`, upstream branches and the user's OpenClaw state are not modified.
