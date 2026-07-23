@@ -51,15 +51,19 @@ jobs:
       - run: npm run build --workspace openclaw-plugin
       - run: npm ci
         working-directory: nango-integrations
-      - run: npm run verify:nango
-        working-directory: nango-integrations
-      - run: npm ci
-        working-directory: mail-bridge
-      - run: npm test
+      - run: npm run test:unit
         working-directory: nango-integrations
       - run: npm run typecheck
         working-directory: nango-integrations
+      - run: npm run verify:nango
+        working-directory: nango-integrations
       - run: npm run build
+        working-directory: nango-integrations
+      - run: npm ci
+        working-directory: mail-bridge
+      - run: npm run test:e2e
+        working-directory: nango-integrations
+      - run: npm run typecheck:e2e
         working-directory: nango-integrations
       - run: npm test
         working-directory: mail-bridge

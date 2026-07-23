@@ -74,7 +74,7 @@ describe('Nango action identity and compiler-safe imports', () => {
         };
 
         expect(pkg.dependencies).toMatchObject({ nango: '0.71.2', zod: '4.3.6' });
-        expect(pkg.engines.node).toBe('>=22.22.2');
+        expect(pkg.engines['node']).toBe('>=22.22.2');
     });
 
     it('side-effect imports every action with directory/basename identity', async () => {
@@ -268,7 +268,7 @@ describe('bridge signing and fixed transport', () => {
         expect(request).not.toHaveProperty('providerConfigKey');
         expect(request).not.toHaveProperty('connectionId');
         expect(JSON.stringify(request)).not.toContain('oauth-access-token');
-        expect((request.headers as Record<string, string>).Authorization).toBeUndefined();
+        expect((request['headers'] as Record<string, string>)['Authorization']).toBeUndefined();
     });
 
     it.each([

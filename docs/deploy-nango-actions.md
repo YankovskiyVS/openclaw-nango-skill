@@ -18,15 +18,32 @@ deployment.
 
 ## Offline verification
 
+From a fresh checkout, verify the Nango package without installing the bridge
+first:
+
 ```bash
 cd nango-integrations
 npm ci
-npm test
+npm run test:unit
 npm run typecheck
+npm run verify:nango
 npm run build
 npm audit
 ```
 
+The localhost HTTPS acceptance imports production bridge source, so install
+the bridge package before running the cross-package checks:
+
+```bash
+cd ../mail-bridge
+npm ci
+cd ../nango-integrations
+npm run test:e2e
+npm run typecheck:e2e
+```
+
+After both installs, `npm test` in `nango-integrations` runs the unit and E2E
+suites together. CI preserves this ordering and runs the E2E suite explicitly.
 The pinned toolchain requires Node.js 22.22.2 or newer.
 
 ## Yandex Mail bridge
@@ -57,8 +74,8 @@ uses bounded process memory, so a restart loses replay and idempotency state.
 In `multi` mode the bridge emits safe JSON status transitions on stderr with
 component `mail_bridge_redis` and code `redis_ready` or
 `shared_store_unavailable`; raw Redis errors and the Redis URL are omitted.
-While unavailable, replay/idempotency operations fail closed before dispatch,
-and a later Redis `ready` event restores them.
+While unavailable, replay/idempotency operations fail closed with HTTP 503
+before dispatch, and a later Redis `ready` event restores them.
 
 The bridge accepts only signed JSON POSTs on fixed routes. It pins outbound
 mail traffic to:

@@ -197,7 +197,14 @@ export function createBridgeHandler(dependencies: {
                         parsed.payload,
                         authenticated.bodySha256
                     );
-                    return { status: result.ok ? 200 : result.outcome === 'unknown' ? 202 : 409, body: result };
+                    const status = result.ok
+                        ? 200
+                        : result.outcome === 'unknown'
+                          ? 202
+                          : result.error.code === 'idempotency_store_unavailable'
+                            ? 503
+                            : 409;
+                    return { status, body: result };
                 }
                 default:
                     return invalidRequest();

@@ -7,8 +7,11 @@
     "node": ">=22.22.2"
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "vitest run test/yandex-mail.test.ts test/amocrm-chats-channel.test.ts test/assert-nango-compile.test.ts",
+    "test:e2e": "vitest run test/end-to-end.test.ts",
     "typecheck": "tsc --noEmit",
+    "typecheck:e2e": "tsc -p tsconfig.e2e.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "compile:nango": "nango compile --no-dependency-update --no-telemetry --no-interactive",
     "verify:nango": "npm run compile:nango && node test/assert-nango-compile.mjs"

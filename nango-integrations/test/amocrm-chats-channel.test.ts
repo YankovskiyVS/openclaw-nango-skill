@@ -281,7 +281,7 @@ describe('fixed internal connection and outbound transport', () => {
         expect(JSON.stringify(request)).not.toContain(CHANNEL_SECRET);
         expect(request).not.toHaveProperty('providerConfigKey');
         expect(request).not.toHaveProperty('connectionId');
-        expect((request.headers as Record<string, string>).Authorization).toBeUndefined();
+        expect((request['headers'] as Record<string, string>)['Authorization']).toBeUndefined();
         expect(JSON.stringify(result)).not.toContain('195b88f4');
     });
 

@@ -10,6 +10,7 @@ import {
     authenticateBridgeRequest,
     createConfiguredStore
 } from '../src/auth.js';
+import { MailService } from '../src/mail.js';
 import {
     MAX_RAW_BODY_BYTES,
     createBridgeHandler,
@@ -20,12 +21,23 @@ const SECRET = '0123456789abcdef0123456789abcdef';
 const TOKEN = 'provider-access-token-never-returned';
 const NOW = 1_750_000_000;
 const PATH = '/v1/yandex-mail/resolve-mailbox';
+const SEND_PATH = '/v1/yandex-mail/send-message';
 const NONCE = '00112233445566778899aabbccddeeff';
 const BODY = Buffer.from('{"mailbox":"robot@custom-domain.example","payload":{}}');
 
 function signedHeaders(body = BODY, timestamp = NOW, nonce = NONCE, secret = SECRET) {
+    return signedHeadersForPath(PATH, body, timestamp, nonce, secret);
+}
+
+function signedHeadersForPath(
+    path: string,
+    body: Buffer,
+    timestamp = NOW,
+    nonce = NONCE,
+    secret = SECRET
+) {
     const digest = createHash('sha256').update(body).digest('hex');
-    const canonical = ['v1', 'POST', PATH, String(timestamp), nonce, digest].join('\n');
+    const canonical = ['v1', 'POST', path, String(timestamp), nonce, digest].join('\n');
     return {
         authorization: `Bearer ${TOKEN}`,
         'content-type': 'application/json',
@@ -163,6 +175,70 @@ describe('bridge request authentication', () => {
         expect(replay.status).toBe(409);
         expect(parseJson).toHaveBeenCalledTimes(1);
         expect(mail.resolveMailbox).toHaveBeenCalledTimes(1);
+    });
+
+    it('maps a pre-dispatch idempotency-store outage to HTTP 503 without SMTP I/O', async () => {
+        const store = {
+            consumeNonce: vi.fn().mockResolvedValue(true),
+            beginSend: vi.fn().mockRejectedValue(
+                new Error('redis://user:password@redis.internal:6379 contains-sensitive-provider-detail')
+            ),
+            confirmSend: vi.fn(),
+            markSendUnknown: vi.fn()
+        };
+        const sendMail = vi.fn();
+        const close = vi.fn();
+        const mail = new MailService({
+            store,
+            imapFactory: vi.fn(() => {
+                throw new Error('IMAP is outside this send regression');
+            }),
+            smtpFactory: vi.fn().mockReturnValue({ sendMail, close })
+        });
+        const handler = createBridgeHandler({
+            secret: SECRET,
+            store,
+            mail,
+            nowSeconds: () => NOW
+        });
+        const body = Buffer.from(
+            JSON.stringify({
+                mailbox: 'robot@custom-domain.example',
+                payload: {
+                    idempotencyKey: 'store-outage-12345678',
+                    to: ['recipient@example.com'],
+                    subject: 'Must not dispatch',
+                    text: 'Redis failed after authentication'
+                }
+            })
+        );
+
+        const response = await handler({
+            method: 'POST',
+            path: SEND_PATH,
+            headers: signedHeadersForPath(SEND_PATH, body),
+            body
+        });
+
+        expect(store.consumeNonce).toHaveBeenCalledTimes(1);
+        expect(store.beginSend).toHaveBeenCalledTimes(1);
+        expect(response).toEqual({
+            status: 503,
+            body: {
+                ok: false,
+                outcome: 'not_started',
+                error: {
+                    code: 'idempotency_store_unavailable',
+                    message: 'The send idempotency store is unavailable.',
+                    retryable: true
+                }
+            }
+        });
+        expect(sendMail).not.toHaveBeenCalled();
+        expect(close).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(response)).not.toContain('password');
+        expect(JSON.stringify(response)).not.toContain(SECRET);
+        expect(JSON.stringify(response)).not.toContain(TOKEN);
     });
 });
 

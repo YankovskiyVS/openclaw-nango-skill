@@ -6,9 +6,27 @@ const expectedActions = new Map([
     ['yandex-mail', ['get-message', 'list-messages', 'resolve-mailbox', 'send-message']]
 ]);
 
-const manifest = JSON.parse(await readFile(new URL('../.nango/nango.json', import.meta.url), 'utf8'));
+function option(name, fallback) {
+    const index = process.argv.indexOf(name);
+    if (index === -1) {
+        return fallback;
+    }
+    assert.ok(process.argv[index + 1], `${name} requires a path`);
+    return process.argv[index + 1];
+}
+
+const manifestPath = option('--manifest', new URL('../.nango/nango.json', import.meta.url));
+const buildDirectory = option('--build-dir', new URL('../build/', import.meta.url));
+const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 assert.ok(Array.isArray(manifest), '.nango/nango.json must contain an integration array');
 assert.equal(manifest.length, expectedActions.size, 'Nango must compile exactly two integrations');
+const providerKeys = manifest.map((integration) => integration?.providerConfigKey);
+assert.equal(new Set(providerKeys).size, providerKeys.length, 'Nango providerConfigKey values must be unique');
+assert.deepEqual(
+    [...providerKeys].sort(),
+    [...expectedActions.keys()].sort(),
+    'Nango must compile exactly the expected providerConfigKey values'
+);
 
 for (const integration of manifest) {
     assert.equal(typeof integration?.providerConfigKey, 'string', 'Every integration needs a providerConfigKey');
@@ -33,7 +51,7 @@ for (const integration of manifest) {
 const expectedArtifacts = [...expectedActions]
     .flatMap(([integration, actions]) => actions.map((action) => `${integration}_actions_${action}.cjs`))
     .sort();
-const artifacts = (await readdir(new URL('../build/', import.meta.url)))
+const artifacts = (await readdir(buildDirectory))
     .filter((name) => name.endsWith('.cjs'))
     .sort();
 assert.deepEqual(artifacts, expectedArtifacts, 'Nango must emit exactly the five declared action bundles');
