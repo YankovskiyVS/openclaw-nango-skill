@@ -62,6 +62,42 @@ def _parse_call_args(*extra: str) -> object:
     )
 
 
+def test_json_loader_enforces_a_runtime_independent_nesting_limit() -> None:
+    at_limit = (
+        "[" * nango_proxy.MAX_JSON_NESTING_DEPTH
+        + "0"
+        + "]" * nango_proxy.MAX_JSON_NESTING_DEPTH
+    )
+    parsed = nango_proxy._load_json_with_depth_limit(at_limit)
+    for _ in range(nango_proxy.MAX_JSON_NESTING_DEPTH):
+        assert isinstance(parsed, list)
+        assert len(parsed) == 1
+        parsed = parsed[0]
+    assert parsed == 0
+
+    over_limit = (
+        "[" * (nango_proxy.MAX_JSON_NESTING_DEPTH + 1)
+        + "0"
+        + "]" * (nango_proxy.MAX_JSON_NESTING_DEPTH + 1)
+    )
+    with pytest.raises(nango_proxy.JsonNestingError):
+        nango_proxy._load_json_with_depth_limit(over_limit)
+
+
+def test_json_nesting_scanner_ignores_structural_characters_in_strings() -> None:
+    payload = json.dumps(
+        {
+            "literal": '[{"quoted":"\\\\\\"}]}',
+            "nested": [{"ok": True}],
+        }
+    )
+
+    assert nango_proxy._load_json_with_depth_limit(payload) == {
+        "literal": '[{"quoted":"\\\\\\"}]}',
+        "nested": [{"ok": True}],
+    }
+
+
 def test_build_url_encodes_routing_and_preserves_ordered_query() -> None:
     url = nango_proxy.build_url(
         "https://proxy.example/base/",

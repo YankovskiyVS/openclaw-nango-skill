@@ -26,6 +26,7 @@ MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_RESPONSE_METADATA_BYTES = 16 * 1024
 MAX_CONTENT_TYPE_BYTES = 256
 MAX_JSON_OUTPUT_BYTES = 1024 * 1024
+MAX_JSON_NESTING_DEPTH = 256
 MAX_ROUTING_CHARS = 4096
 ALLOWED_METHODS = frozenset(
     {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE", "PROPFIND", "REPORT"}
@@ -137,7 +138,53 @@ _SAFE_UPSTREAM_CODES = frozenset(
         "upstream_unavailable",
     }
 )
-_JSON_RESOURCE_ERRORS = (RecursionError, MemoryError, OverflowError)
+class JsonNestingError(ValueError):
+    """Raised when JSON exceeds the portable nesting budget."""
+
+
+_JSON_RESOURCE_ERRORS = (
+    JsonNestingError,
+    RecursionError,
+    MemoryError,
+    OverflowError,
+)
+_JSON_PARSE_ERRORS = (
+    json.JSONDecodeError,
+    UnicodeDecodeError,
+) + _JSON_RESOURCE_ERRORS
+
+
+def _load_json_with_depth_limit(
+    source: str | bytes | bytearray,
+) -> Any:
+    quote = '"' if isinstance(source, str) else ord('"')
+    escape = "\\" if isinstance(source, str) else ord("\\")
+    openers = ("[", "{") if isinstance(source, str) else (ord("["), ord("{"))
+    closers = ("]", "}") if isinstance(source, str) else (ord("]"), ord("}"))
+    depth = 0
+    in_string = False
+    escaped = False
+
+    for token in source:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif token == escape:
+                escaped = True
+            elif token == quote:
+                in_string = False
+            continue
+
+        if token == quote:
+            in_string = True
+        elif token in openers:
+            depth += 1
+            if depth > MAX_JSON_NESTING_DEPTH:
+                raise JsonNestingError("JSON nesting depth exceeds the limit")
+        elif token in closers and depth:
+            depth -= 1
+
+    return json.loads(source)
 
 
 class ApiKeyFileError(Exception):
@@ -373,7 +420,7 @@ def _response_body(response: httpx.Response) -> Any:
                 "truncated": True,
             }
         try:
-            return json.loads(content)
+            return _load_json_with_depth_limit(content)
         except (json.JSONDecodeError, UnicodeDecodeError):
             return content.decode("utf-8", errors="replace")
 
@@ -555,7 +602,7 @@ def _explicit_upstream_error(response: httpx.Response) -> tuple[str, str]:
     ) or len(response.content) > MAX_RESPONSE_BYTES:
         return layer, code
     try:
-        payload = json.loads(response.content)
+        payload = _load_json_with_depth_limit(response.content)
     except (json.JSONDecodeError, UnicodeDecodeError):
         return layer, code
     if not isinstance(payload, dict):
@@ -718,14 +765,8 @@ def cmd_call(args: argparse.Namespace) -> int:
         json_supplied = json_body is not None
         if json_supplied and isinstance(json_body, str):
             try:
-                json_body = json.loads(json_body)
-            except (
-                json.JSONDecodeError,
-                UnicodeDecodeError,
-                RecursionError,
-                MemoryError,
-                OverflowError,
-            ) as exc:
+                json_body = _load_json_with_depth_limit(json_body)
+            except _JSON_PARSE_ERRORS as exc:
                 raise ValueError("JSON body is invalid") from exc
 
         proxy_url = _resolve_proxy_url(args.proxy_url)
