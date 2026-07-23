@@ -528,6 +528,41 @@ def test_oversized_text_response_is_capped(
     assert "must-not-appear" not in output
 
 
+@pytest.mark.parametrize("command", ["call", "health"])
+def test_plain_output_cap_counts_utf8_replacement_status_and_newlines(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+) -> None:
+    monkeypatch.setattr(nango_proxy, "MAX_RESPONSE_BYTES", 40)
+    response_body = b"\xff" * 8 + b"plain-tail-secret"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=response_body,
+            headers={"content-type": "text/plain; charset=utf-8"},
+            request=request,
+        )
+
+    _install_mock_transport(monkeypatch, handler)
+    _set_call_environment(monkeypatch)
+    if command == "call":
+        exit_code = nango_proxy.cmd_call(_parse_call_args())
+    else:
+        args = nango_proxy.build_parser().parse_args(
+            ["--proxy-url", "https://proxy.example", "health"]
+        )
+        exit_code = nango_proxy.cmd_health(args)
+
+    assert exit_code == 0
+
+    output = capsys.readouterr().out
+    assert output.startswith("HTTP 200")
+    assert len(output.encode("utf-8")) <= 40
+    assert "plain-tail-secret" not in output
+
+
 def test_oversized_json_response_is_summarized_without_parsing(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -697,6 +732,37 @@ def test_malformed_json_body_is_rejected_without_argparse_echo(
     assert json.loads(captured.out)["error"]["layer"] == "validation"
 
 
+def test_deeply_nested_request_json_is_a_safe_validation_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    secret = "deep-request-secret"
+    json_body = "[" * 1200 + f'"{secret}"' + "]" * 1200
+
+    def forbidden_client(*args: object, **kwargs: object) -> None:
+        raise AssertionError("invalid JSON must not create an HTTP client")
+
+    monkeypatch.setattr(nango_proxy.httpx, "Client", forbidden_client)
+    _set_call_environment(monkeypatch)
+
+    assert (
+        nango_proxy.cmd_call(
+            _parse_call_args("--json", json_body, "--json-output")
+        )
+        == 2
+    )
+
+    captured = capsys.readouterr()
+    assert secret not in captured.out
+    assert secret not in captured.err
+    assert json.loads(captured.out)["error"] == {
+        "layer": "validation",
+        "code": "invalid_request",
+        "message": "Request validation failed",
+        "retryable": False,
+    }
+
+
 @pytest.mark.parametrize("credential_source", ["environment", "legacy"])
 def test_credential_line_break_is_rejected_before_authorization_header(
     monkeypatch: pytest.MonkeyPatch,
@@ -800,6 +866,77 @@ def test_unverified_or_unknown_upstream_error_metadata_is_not_attributed(
         "status": 401,
         "retryable": False,
     }
+
+
+@pytest.mark.parametrize("status", [200, 502])
+def test_deeply_nested_upstream_json_is_a_safe_invalid_response(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    status: int,
+) -> None:
+    secret = "deep-upstream-secret"
+    response_body = (
+        "[" * 1200 + f'"{secret}"' + "]" * 1200
+    ).encode("utf-8")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            status,
+            content=response_body,
+            headers={"content-type": "application/json"},
+            request=request,
+        )
+
+    _install_mock_transport(monkeypatch, handler)
+    _set_call_environment(monkeypatch)
+
+    assert nango_proxy.cmd_call(_parse_call_args("--json-output")) == 1
+
+    captured = capsys.readouterr()
+    assert secret not in captured.out
+    assert secret not in captured.err
+    envelope = json.loads(captured.out)
+    assert envelope["error"] == {
+        "layer": "unknown_upstream",
+        "code": "invalid_response",
+        "message": "Upstream response could not be parsed",
+        "status": status,
+        "retryable": False,
+    }
+    assert envelope["outcome"] == "confirmed_failed"
+
+
+def test_deeply_nested_health_json_is_a_safe_invalid_response(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    secret = "deep-health-secret"
+    response_body = (
+        "[" * 1200 + f'"{secret}"' + "]" * 1200
+    ).encode("utf-8")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=response_body,
+            headers={"content-type": "application/json"},
+            request=request,
+        )
+
+    _install_mock_transport(monkeypatch, handler)
+    args = nango_proxy.build_parser().parse_args(
+        ["--proxy-url", "https://proxy.example", "health"]
+    )
+
+    assert nango_proxy.cmd_health(args) == 1
+
+    captured = capsys.readouterr()
+    assert secret not in captured.out
+    assert secret not in captured.err
+    assert (
+        "ERROR unknown_upstream/invalid_response: Health response is invalid"
+        in captured.out
+    )
 
 
 def test_mutation_http_failure_is_confirmed_and_not_retried(
@@ -1328,7 +1465,7 @@ def test_health_response_is_bounded_and_redirects_are_disabled(
 
     output = capsys.readouterr().out
     assert client_options[0]["follow_redirects"] is False
-    assert "healthy!" in output
+    assert len(output.encode("utf-8")) <= 8
     assert "health-tail-secret" not in output
 
 

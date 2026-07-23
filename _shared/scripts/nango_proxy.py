@@ -127,6 +127,7 @@ _SAFE_UPSTREAM_CODES = frozenset(
         "upstream_unavailable",
     }
 )
+_JSON_RESOURCE_ERRORS = (RecursionError, MemoryError, OverflowError)
 
 
 class ApiKeyFileError(Exception):
@@ -359,6 +360,17 @@ def _dump_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
+def _bounded_utf8(value: str, max_bytes: int) -> str:
+    encoded = value.encode("utf-8", errors="replace")
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
+
+def _emit_plain_response(status: int, body: Any) -> None:
+    body_text = _dump_json(body) if isinstance(body, (dict, list)) else str(body)
+    output = f"HTTP {status}\n{body_text}\n"
+    sys.stdout.write(_bounded_utf8(output, MAX_RESPONSE_BYTES))
+
+
 def _summarized_response_body(response: httpx.Response) -> dict[str, Any]:
     content_type = _content_type(response)
     media_type = content_type.partition(";")[0].strip().lower()
@@ -456,6 +468,23 @@ def _emit_failure(
         status_text = f" (HTTP {status})" if status is not None else ""
         print(f"ERROR {layer}/{code}{status_text}: {message}")
     return exit_code
+
+
+def _emit_invalid_response(
+    args: argparse.Namespace,
+    request: dict[str, str],
+    response: httpx.Response,
+) -> int:
+    return _emit_failure(
+        args,
+        request,
+        layer="unknown_upstream",
+        code="invalid_response",
+        message="Upstream response could not be parsed",
+        status=response.status_code,
+        retryable=False,
+        outcome="confirmed_failed",
+    )
 
 
 def _explicit_upstream_error(response: httpx.Response) -> tuple[str, str]:
@@ -631,7 +660,13 @@ def cmd_call(args: argparse.Namespace) -> int:
         if json_supplied and isinstance(json_body, str):
             try:
                 json_body = json.loads(json_body)
-            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            except (
+                json.JSONDecodeError,
+                UnicodeDecodeError,
+                RecursionError,
+                MemoryError,
+                OverflowError,
+            ) as exc:
                 raise ValueError("JSON body is invalid") from exc
 
         proxy_url = _resolve_proxy_url(args.proxy_url)
@@ -674,7 +709,7 @@ def cmd_call(args: argparse.Namespace) -> int:
             outcome="not_started",
             exit_code=2,
         )
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, RecursionError, MemoryError, OverflowError):
         return _emit_failure(
             args,
             request,
@@ -752,7 +787,10 @@ def cmd_call(args: argparse.Namespace) -> int:
                 retryable=False,
                 outcome="confirmed_failed",
             )
-        layer, code = _explicit_upstream_error(response)
+        try:
+            layer, code = _explicit_upstream_error(response)
+        except _JSON_RESOURCE_ERRORS:
+            return _emit_invalid_response(args, request, response)
         retryable = not is_mutation and (
             response.status_code in {408, 429} or response.status_code >= 500
         )
@@ -767,7 +805,10 @@ def cmd_call(args: argparse.Namespace) -> int:
             outcome="confirmed_failed",
         )
 
-    response_payload = _response_payload(response)
+    try:
+        response_payload = _response_payload(response)
+    except _JSON_RESOURCE_ERRORS:
+        return _emit_invalid_response(args, request, response)
     if args.json_output:
         envelope = {
             "ok": True,
@@ -777,15 +818,7 @@ def cmd_call(args: argparse.Namespace) -> int:
         }
         print(_bounded_success_json(envelope, response))
     else:
-        print(f"HTTP {response.status_code}")
-        body = response_payload["body"]
-        if isinstance(body, (dict, list)):
-            serialized_body = _dump_json(body)
-            if len(serialized_body.encode("utf-8")) > MAX_JSON_OUTPUT_BYTES:
-                serialized_body = _dump_json(_summarized_response_body(response))
-            print(serialized_body)
-        else:
-            print(body)
+        _emit_plain_response(response.status_code, response_payload["body"])
 
     return 0
 
@@ -806,16 +839,12 @@ def cmd_health(args: argparse.Namespace) -> int:
         print("ERROR network/network_error: Health request failed")
         return 1
 
-    response_payload = _response_payload(response)
-    print(f"HTTP {response.status_code}")
-    body = response_payload["body"]
-    if isinstance(body, (dict, list)):
-        serialized_body = _dump_json(body)
-        if len(serialized_body.encode("utf-8")) > MAX_JSON_OUTPUT_BYTES:
-            serialized_body = _dump_json(_summarized_response_body(response))
-        print(serialized_body)
-    else:
-        print(body)
+    try:
+        response_payload = _response_payload(response)
+        _emit_plain_response(response.status_code, response_payload["body"])
+    except _JSON_RESOURCE_ERRORS:
+        print("ERROR unknown_upstream/invalid_response: Health response is invalid")
+        return 1
     return 0 if response.status_code == 200 else 1
 
 
