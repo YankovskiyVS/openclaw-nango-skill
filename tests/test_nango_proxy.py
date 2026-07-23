@@ -98,6 +98,21 @@ def test_json_nesting_scanner_ignores_structural_characters_in_strings() -> None
     }
 
 
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16", "utf-32"])
+def test_json_nesting_scanner_preserves_supported_byte_encodings(
+    encoding: str,
+) -> None:
+    literal = "\u225b" + "[" * (nango_proxy.MAX_JSON_NESTING_DEPTH + 1)
+    payload = json.dumps(
+        {"literal": literal},
+        ensure_ascii=False,
+    ).encode(encoding)
+
+    assert nango_proxy._load_json_with_depth_limit(payload) == {
+        "literal": literal,
+    }
+
+
 def test_build_url_encodes_routing_and_preserves_ordered_query() -> None:
     url = nango_proxy.build_url(
         "https://proxy.example/base/",

@@ -157,31 +157,35 @@ _JSON_PARSE_ERRORS = (
 def _load_json_with_depth_limit(
     source: str | bytes | bytearray,
 ) -> Any:
-    quote = '"' if isinstance(source, str) else ord('"')
-    escape = "\\" if isinstance(source, str) else ord("\\")
-    openers = ("[", "{") if isinstance(source, str) else (ord("["), ord("{"))
-    closers = ("]", "}") if isinstance(source, str) else (ord("]"), ord("}"))
+    if isinstance(source, str):
+        scan_source = source
+    else:
+        encoded_source = bytes(source)
+        scan_source = encoded_source.decode(
+            json.detect_encoding(encoded_source),
+            "surrogatepass",
+        )
     depth = 0
     in_string = False
     escaped = False
 
-    for token in source:
+    for token in scan_source:
         if in_string:
             if escaped:
                 escaped = False
-            elif token == escape:
+            elif token == "\\":
                 escaped = True
-            elif token == quote:
+            elif token == '"':
                 in_string = False
             continue
 
-        if token == quote:
+        if token == '"':
             in_string = True
-        elif token in openers:
+        elif token in ("[", "{"):
             depth += 1
             if depth > MAX_JSON_NESTING_DEPTH:
                 raise JsonNestingError("JSON nesting depth exceeds the limit")
-        elif token in closers and depth:
+        elif token in ("]", "}") and depth:
             depth -= 1
 
     return json.loads(source)
