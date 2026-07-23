@@ -16,13 +16,13 @@
 - **Path:** `api/b2b/platform/offers/create`
 - **Request shape:** Unavailable — exact body fields and a readback/reconciliation contract are not verified.
 - **Pagination:** None — one bounded tool call.
-- **Mutability:** `mutation` — one-time approval is required before execution.
+- **Mutability:** `unsupported` — no executable operation is classified.
 - **Verification:** Do not execute until the exact product body schema, created-entity read path, and unknown-outcome reconciliation route are verified.
 - **Authoritative docs:** `not_verified` — no authoritative documentation URL is recorded for this operation.
 
 #### Non-executable boundary
 
-No executable typed tool call is available. The legacy command remains only in `SKILL.md` as an operator fallback; do not execute it without the missing verified contract.
+No executable typed tool call or catalog fallback command is available. Keep the packaged generic HTTP client for operator-supplied documented paths, but do not invent this missing product contract.
 
 ## Notes
 

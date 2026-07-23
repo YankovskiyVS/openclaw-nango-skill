@@ -57,7 +57,7 @@
 {
   "tool": "nango_proxy_request",
   "arguments": {
-    "providerConfigKey": "yandex-id",
+    "providerConfigKey": "yandex",
     "method": "GET",
     "path": "info",
     "query": [

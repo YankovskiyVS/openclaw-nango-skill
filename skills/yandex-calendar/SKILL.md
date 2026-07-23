@@ -59,7 +59,7 @@ Keep this compatibility path for diagnostics or deployments where the plugin is 
 
 ```bash
 # CalDAV root
-python3 {baseDir}/scripts/nango_proxy.py call yandex-calendar calendars/ --json-output
+python3 {baseDir}/scripts/nango_proxy.py call yandex-calendar calendars/ --method PROPFIND --header 'Depth: 1' --header 'Content-Type: application/xml; charset=utf-8' --text '<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:displayname/></d:prop></d:propfind>' --json-output
 ```
 
 The fallback preserves the full generic HTTP flags documented in `{baseDir}/references/api-reference.md`.

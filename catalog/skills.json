@@ -44,6 +44,7 @@
           "command": "call yandex info --query 'format=json' --json-output",
           "availability": "ready",
           "tool": "nango_proxy_request",
+          "provider_config_key": "yandex",
           "method": "GET",
           "path": "info",
           "query": [
@@ -179,6 +180,19 @@
         {
           "title": "Resolve mailbox email",
           "command": "call yandex-mail info --query 'format=json' --json-output",
+          "fallback_contract": {
+            "transport": "proxy_http",
+            "operation_kind": "read",
+            "provider_config_key": "yandex-mail",
+            "method": "GET",
+            "path": "info",
+            "query": [
+              {
+                "name": "format",
+                "value": "json"
+              }
+            ]
+          },
           "availability": "ready",
           "tool": "nango_action",
           "method": null,
@@ -289,7 +303,7 @@
       "operations": [
         {
           "title": "CalDAV root",
-          "command": "call yandex-calendar calendars/ --json-output",
+          "command": "call yandex-calendar calendars/ --method PROPFIND --header 'Depth: 1' --header 'Content-Type: application/xml; charset=utf-8' --text '<?xml version=\"1.0\" encoding=\"utf-8\"?><d:propfind xmlns:d=\"DAV:\"><d:prop><d:displayname/></d:prop></d:propfind>' --json-output",
           "availability": "ready",
           "tool": "nango_proxy_paginate",
           "method": "PROPFIND",
@@ -368,7 +382,7 @@
       "operations": [
         {
           "title": "JSON v5 campaigns",
-          "command": "call yandex-direct json/v5/campaigns --method POST --json '{\"method\":\"get\",\"params\":{\"SelectionCriteria\":{},\"FieldNames\":[\"Id\",\"Name\"]}}' --json-output",
+          "command": "call yandex-direct json/v5/campaigns --method POST --json '{\"method\":\"get\",\"params\":{\"SelectionCriteria\":{},\"FieldNames\":[\"Id\",\"Name\"],\"Page\":{\"Limit\":100,\"Offset\":0}}}' --json-output",
           "availability": "ready",
           "tool": "nango_proxy_paginate",
           "method": "POST",
@@ -435,7 +449,6 @@
       "operations": [
         {
           "title": "Legacy placeholder — do not execute without a documented path",
-          "command": "call yandex-maps v1/ --json-output",
           "availability": "unsupported",
           "tool": null,
           "method": null,
@@ -499,7 +512,6 @@
       "operations": [
         {
           "title": "Legacy create shape — do not execute without real required fields",
-          "command": "call yandex-delivery api/b2b/platform/offers/create --method POST --json '{}' --json-output",
           "availability": "blocked_contract",
           "tool": null,
           "method": "POST",
@@ -507,7 +519,7 @@
           "pagination": {
             "mode": "none"
           },
-          "operation_kind": "mutation",
+          "operation_kind": "unsupported",
           "verification": "Do not execute until the exact product body schema, created-entity read path, and unknown-outcome reconciliation route are verified.",
           "docs": {
             "status": "not_verified",

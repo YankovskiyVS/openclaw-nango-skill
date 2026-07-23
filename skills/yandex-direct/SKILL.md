@@ -74,7 +74,7 @@ Keep this compatibility path for diagnostics or deployments where the plugin is 
 
 ```bash
 # JSON v5 campaigns
-python3 {baseDir}/scripts/nango_proxy.py call yandex-direct json/v5/campaigns --method POST --json '{"method":"get","params":{"SelectionCriteria":{},"FieldNames":["Id","Name"]}}' --json-output
+python3 {baseDir}/scripts/nango_proxy.py call yandex-direct json/v5/campaigns --method POST --json '{"method":"get","params":{"SelectionCriteria":{},"FieldNames":["Id","Name"],"Page":{"Limit":100,"Offset":0}}}' --json-output
 ```
 
 The fallback preserves the full generic HTTP flags documented in `{baseDir}/references/api-reference.md`.

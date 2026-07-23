@@ -33,6 +33,26 @@
 }
 ```
 
+#### Operator diagnostic fallback
+
+This separate diagnostic fallback uses `proxy_http` and does not exercise `nango_action`. Its structured contract is:
+
+```json
+{
+  "transport": "proxy_http",
+  "operation_kind": "read",
+  "provider_config_key": "yandex-mail",
+  "method": "GET",
+  "path": "info",
+  "query": [
+    {
+      "name": "format",
+      "value": "json"
+    }
+  ]
+}
+```
+
 ### List messages
 
 - **Operation name:** `List messages`

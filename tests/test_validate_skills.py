@@ -73,8 +73,8 @@ def test_validator_reports_all_packaging_contract_violations(tmp_path):
         1,
     )
     text = text.replace(
-        """'{"method":"get","params":{"SelectionCriteria":{},"FieldNames":["Id","Name"]}}'""",
-        """'{{"method":"get","params":{{"SelectionCriteria":{{}},"FieldNames":["Id","Name"]}}}}'""",
+        """'{"method":"get","params":{"SelectionCriteria":{},"FieldNames":["Id","Name"],"Page":{"Limit":100,"Offset":0}}}'""",
+        """'{{"method":"get","params":{{"SelectionCriteria":{{}},"FieldNames":["Id","Name"],"Page":{{"Limit":100,"Offset":0}}}}}}'""",
         1,
     )
     text = text.replace(

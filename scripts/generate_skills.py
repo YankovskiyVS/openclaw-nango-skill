@@ -82,6 +82,8 @@ OPERATION_REQUIRED_FIELDS = {
 }
 OPERATION_OPTIONAL_FIELDS = {
     "command",
+    "provider_config_key",
+    "fallback_contract",
     "query",
     "headers",
     "json_body",
@@ -102,6 +104,10 @@ TYPED_TOOLS = {
     "nango_proxy_paginate",
     "nango_action",
     "nango_disk_transfer",
+}
+PROXY_TOOLS = {
+    "nango_proxy_request",
+    "nango_proxy_paginate",
 }
 REGISTERED_ACTION_KINDS = {
     ("yandex-mail", "resolve-mailbox"): "read",
@@ -131,6 +137,20 @@ PAGINATION_SOURCE_MODES = {
     "body-offset",
     "link",
     "action-window",
+}
+FALLBACK_REQUIRED_FIELDS = {
+    "transport",
+    "operation_kind",
+    "provider_config_key",
+    "method",
+    "path",
+}
+FALLBACK_OPTIONAL_FIELDS = {
+    "query",
+    "headers",
+    "json_body",
+    "text_body",
+    "content_type",
 }
 
 PAGINATION_MODES = {
@@ -312,6 +332,230 @@ def _validate_query(skill_id, query):
             )
 
 
+def _validate_headers(skill_id, headers, label):
+    if not isinstance(headers, dict) or not all(
+        isinstance(name, str)
+        and name
+        and isinstance(value, str)
+        for name, value in headers.items()
+    ):
+        raise ValueError(
+            "{} {} headers must be string pairs".format(skill_id, label)
+        )
+
+
+def _validate_body_fields(skill_id, contract, label):
+    if "text_body" in contract and not isinstance(
+        contract["text_body"], str
+    ):
+        raise ValueError(
+            "{} {} text_body must be a string".format(skill_id, label)
+        )
+    if "content_type" in contract:
+        _validate_string(
+            contract["content_type"],
+            "{} content_type".format(label),
+            skill_id,
+        )
+        if "text_body" not in contract:
+            raise ValueError(
+                "{} {} content_type requires text_body".format(skill_id, label)
+            )
+    if "json_body" in contract and "text_body" in contract:
+        raise ValueError(
+            "{} {} cannot mix json_body and text_body".format(skill_id, label)
+        )
+
+
+def _validate_fallback_contract(skill_id, contract, allowed_providers):
+    if not isinstance(contract, dict):
+        raise ValueError(
+            "{} fallback_contract must be an object".format(skill_id)
+        )
+    missing = FALLBACK_REQUIRED_FIELDS - set(contract)
+    unknown = set(contract) - FALLBACK_REQUIRED_FIELDS - FALLBACK_OPTIONAL_FIELDS
+    if missing:
+        raise ValueError(
+            "{} fallback_contract is missing fields: {}".format(
+                skill_id,
+                ", ".join(sorted(missing)),
+            )
+        )
+    if unknown:
+        raise ValueError(
+            "{} fallback_contract has unsupported fields: {}".format(
+                skill_id,
+                ", ".join(sorted(unknown)),
+            )
+        )
+    if contract["transport"] != "proxy_http":
+        raise ValueError(
+            "{} fallback_contract has unsupported transport".format(skill_id)
+        )
+    if contract["operation_kind"] not in {"read", "mutation"}:
+        raise ValueError(
+            "{} fallback_contract has unsupported operation_kind".format(
+                skill_id
+            )
+        )
+    if contract["provider_config_key"] not in allowed_providers:
+        raise ValueError(
+            "{} fallback_contract uses undeclared provider {}".format(
+                skill_id,
+                contract["provider_config_key"],
+            )
+        )
+    if contract["method"] not in HTTP_METHODS:
+        raise ValueError(
+            "{} fallback_contract requires a supported method".format(skill_id)
+        )
+    _validate_string(
+        contract["path"],
+        "fallback_contract path",
+        skill_id,
+    )
+    if "query" in contract:
+        _validate_query(skill_id, contract["query"])
+    if "headers" in contract:
+        _validate_headers(skill_id, contract["headers"], "fallback_contract")
+    _validate_body_fields(skill_id, contract, "fallback_contract")
+
+
+def _normalized_http_contract(
+    provider_config_key,
+    source,
+):
+    contract = {
+        "provider_config_key": provider_config_key,
+        "method": source["method"],
+        "path": source["path"],
+        "query": source.get("query", []),
+        "headers": source.get("headers", {}),
+    }
+    for field in ("json_body", "text_body", "content_type"):
+        if field in source:
+            contract[field] = source[field]
+    return contract
+
+
+def _command_http_contract(skill_id, command_text):
+    try:
+        command = shlex.split(command_text)
+    except ValueError as exc:
+        raise ValueError(
+            "{} operation command has invalid shell syntax".format(skill_id)
+        ) from exc
+    if len(command) < 3 or command[0] != "call":
+        raise ValueError("{} operation is not a call command".format(skill_id))
+
+    contract = {
+        "provider_config_key": command[1],
+        "method": "GET",
+        "path": command[2],
+        "query": [],
+        "headers": {},
+    }
+    body_mode = None
+    content_type = None
+    json_output = False
+    index = 3
+    while index < len(command):
+        argument = command[index]
+        if argument == "--json-output":
+            if json_output:
+                raise ValueError(
+                    "{} operation repeats --json-output".format(skill_id)
+                )
+            json_output = True
+            index += 1
+            continue
+        if argument not in {
+            "--method",
+            "--query",
+            "--header",
+            "--json",
+            "--text",
+        }:
+            raise ValueError(
+                "{} operation command uses unsupported catalog flag {}".format(
+                    skill_id,
+                    argument,
+                )
+            )
+        if index + 1 == len(command):
+            raise ValueError(
+                "{} operation command has no value for {}".format(
+                    skill_id,
+                    argument,
+                )
+            )
+        value = command[index + 1]
+        index += 2
+
+        if argument == "--method":
+            contract["method"] = value.upper()
+        elif argument == "--query":
+            contract["query"] = [
+                {"name": name, "value": pair_value}
+                for name, pair_value in parse_qsl(
+                    value,
+                    keep_blank_values=True,
+                )
+            ]
+        elif argument == "--header":
+            if ":" not in value:
+                raise ValueError(
+                    "{} operation command has an invalid header".format(
+                        skill_id
+                    )
+                )
+            name, header_value = value.split(":", 1)
+            name = name.strip()
+            header_value = header_value.strip()
+            if name.lower() == "content-type":
+                if content_type is not None:
+                    raise ValueError(
+                        "{} operation repeats Content-Type".format(skill_id)
+                    )
+                content_type = header_value
+            else:
+                normalized_names = {
+                    existing.lower() for existing in contract["headers"]
+                }
+                if name.lower() in normalized_names:
+                    raise ValueError(
+                        "{} operation repeats a header".format(skill_id)
+                    )
+                contract["headers"][name] = header_value
+        elif argument == "--json":
+            if body_mode is not None:
+                raise ValueError(
+                    "{} operation command mixes body modes".format(skill_id)
+                )
+            body_mode = "json_body"
+            try:
+                contract["json_body"] = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    "{} operation has invalid --json".format(skill_id)
+                ) from exc
+        elif argument == "--text":
+            if body_mode is not None:
+                raise ValueError(
+                    "{} operation command mixes body modes".format(skill_id)
+                )
+            body_mode = "text_body"
+            contract["text_body"] = value
+
+    if not json_output:
+        raise ValueError(
+            "{} operation command must use --json-output".format(skill_id)
+        )
+    if content_type is not None:
+        contract["content_type"] = content_type
+    return contract
+
+
 def _validate_operation(skill_id, operation, allowed_providers):
     if not isinstance(operation, dict):
         raise ValueError("{} operations must be objects".format(skill_id))
@@ -344,10 +588,20 @@ def _validate_operation(skill_id, operation, allowed_providers):
         raise ValueError(
             "{} operation has unsupported operation_kind".format(skill_id)
         )
-    if (availability == "unsupported") != (operation_kind == "unsupported"):
+    is_boundary = availability in {"unsupported", "blocked_contract"}
+    if is_boundary != (operation_kind == "unsupported"):
         raise ValueError(
-            "{} unsupported availability and operation_kind must agree".format(
+            "{} boundary availability and operation_kind must agree".format(
                 skill_id
+            )
+        )
+
+    operation_provider = operation.get("provider_config_key", skill_id)
+    if operation_provider not in allowed_providers:
+        raise ValueError(
+            "{} operation uses undeclared provider {}".format(
+                skill_id,
+                operation_provider,
             )
         )
 
@@ -403,34 +657,9 @@ def _validate_operation(skill_id, operation, allowed_providers):
 
     if "query" in operation:
         _validate_query(skill_id, operation["query"])
-    if "headers" in operation and (
-        not isinstance(operation["headers"], dict)
-        or not all(
-            isinstance(name, str)
-            and name
-            and isinstance(value, str)
-            for name, value in operation["headers"].items()
-        )
-    ):
-        raise ValueError(
-            "{} operation headers must be string pairs".format(skill_id)
-        )
-    if "text_body" in operation and not isinstance(
-        operation["text_body"], str
-    ):
-        raise ValueError("{} operation text_body must be a string".format(skill_id))
-    if "content_type" in operation:
-        _validate_string(
-            operation["content_type"], "operation content_type", skill_id
-        )
-        if "text_body" not in operation:
-            raise ValueError(
-                "{} operation content_type requires text_body".format(skill_id)
-            )
-    if "json_body" in operation and "text_body" in operation:
-        raise ValueError(
-            "{} operation cannot mix json_body and text_body".format(skill_id)
-        )
+    if "headers" in operation:
+        _validate_headers(skill_id, operation["headers"], "operation")
+    _validate_body_fields(skill_id, operation, "operation")
 
     proxy_only = {
         "query",
@@ -510,26 +739,67 @@ def _validate_operation(skill_id, operation, allowed_providers):
             )
         )
 
+    fallback_contract = operation.get("fallback_contract")
+    if fallback_contract is not None:
+        if tool in PROXY_TOOLS:
+            raise ValueError(
+                "{} proxy operation cannot declare a separate "
+                "fallback_contract".format(skill_id)
+            )
+        if is_boundary:
+            raise ValueError(
+                "{} non-executable boundary cannot declare a "
+                "fallback_contract".format(skill_id)
+            )
+        _validate_fallback_contract(
+            skill_id,
+            fallback_contract,
+            allowed_providers,
+        )
+
     command_text = operation.get("command")
-    if command_text is None:
-        return
-    _validate_string(command_text, "legacy command", skill_id)
-    command = shlex.split(command_text)
-    if len(command) < 3 or command[0] != "call":
-        raise ValueError("{} operation is not a call command".format(skill_id))
-    if command[1] not in allowed_providers:
+    if is_boundary and command_text is not None:
         raise ValueError(
-            "{} operation uses undeclared provider {}".format(
-                skill_id, command[1]
+            "{} non-executable boundary cannot declare a command".format(
+                skill_id
             )
         )
-    for index, argument in enumerate(command):
-        if argument == "--json":
-            if index + 1 == len(command):
-                raise ValueError(
-                    "{} operation has no --json value".format(skill_id)
-                )
-            json.loads(command[index + 1])
+    if command_text is None:
+        if fallback_contract is not None:
+            raise ValueError(
+                "{} fallback_contract requires a command".format(skill_id)
+            )
+        return
+    _validate_string(command_text, "legacy command", skill_id)
+    actual_contract = _command_http_contract(skill_id, command_text)
+    if actual_contract["provider_config_key"] not in allowed_providers:
+        raise ValueError(
+            "{} operation uses undeclared provider {}".format(
+                skill_id,
+                actual_contract["provider_config_key"],
+            )
+        )
+    if fallback_contract is not None:
+        expected_contract = _normalized_http_contract(
+            fallback_contract["provider_config_key"],
+            fallback_contract,
+        )
+    elif tool in PROXY_TOOLS:
+        expected_contract = _normalized_http_contract(
+            operation_provider,
+            operation,
+        )
+    else:
+        raise ValueError(
+            "{} command for a non-HTTP typed tool requires a separate "
+            "fallback_contract".format(skill_id)
+        )
+    if actual_contract != expected_contract:
+        raise ValueError(
+            "{} fallback command does not match its structured contract".format(
+                skill_id
+            )
+        )
 
 
 def _generic_plugin_example(entry):
@@ -547,11 +817,6 @@ def _generic_plugin_example(entry):
     )
     if request is None:
         return []
-    if entry["id"] == "yandex-direct":
-        request["jsonBody"]["params"]["Page"] = {
-            "Limit": 100,
-            "Offset": 0,
-        }
     mode = PAGINATION_MODES.get(entry["id"])
     tool = "nango_proxy_paginate" if mode else "nango_proxy_request"
     if mode:
@@ -978,24 +1243,41 @@ def render_skill(entry):
             "and `httpx`. An operator must explicitly choose it. Mutations still "
             "need approval and post-write verification.",
             "",
-            "```bash",
         ]
     )
-    for operation in entry["operations"]:
-        if "command" not in operation:
-            continue
+    fallback_operations = [
+        operation for operation in entry["operations"] if "command" in operation
+    ]
+    if fallback_operations:
+        lines.append("```bash")
+    for operation in fallback_operations:
+        comment = operation["title"]
+        if "fallback_contract" in operation:
+            comment = "{} — diagnostic proxy fallback; does not exercise {}".format(
+                comment,
+                operation["tool"],
+            )
         lines.extend(
             [
-                "# {}".format(operation["title"]),
+                "# {}".format(comment),
                 "python3 {{baseDir}}/scripts/nango_proxy.py {}".format(
                     operation["command"]
                 ),
             ]
         )
+    if fallback_operations:
+        lines.extend(["```", ""])
+    else:
+        lines.extend(
+            [
+                "No catalog fallback command is published for this unavailable "
+                "product contract. The generic client remains packaged for an "
+                "operator-supplied documented path.",
+                "",
+            ]
+        )
     lines.extend(
         [
-            "```",
-            "",
             "The fallback preserves the full generic HTTP flags documented in "
             "`{baseDir}/references/api-reference.md`.",
             "",
@@ -1023,7 +1305,12 @@ def render_skill(entry):
 def _typed_tool_call(entry, operation):
     if operation["tool"] is None:
         return None
-    arguments = {"providerConfigKey": entry["provider_config_key"]}
+    arguments = {
+        "providerConfigKey": operation.get(
+            "provider_config_key",
+            entry["provider_config_key"],
+        )
+    }
     tool = operation["tool"]
     if tool in {"nango_proxy_request", "nango_proxy_paginate"}:
         arguments.update(
@@ -1202,9 +1489,10 @@ def render_endpoints(entry):
                 [
                     "#### Non-executable boundary",
                     "",
-                    "No executable typed tool call is available. The legacy "
-                    "command remains only in `SKILL.md` as an operator fallback; "
-                    "do not execute it without the missing verified contract.",
+                    "No executable typed tool call or catalog fallback command "
+                    "is available. Keep the packaged generic HTTP client for "
+                    "operator-supplied documented paths, but do not invent this "
+                    "missing product contract.",
                     "",
                 ]
             )
@@ -1224,6 +1512,23 @@ def render_endpoints(entry):
                     "",
                     "```json",
                     *_json_lines(tool_call),
+                    "```",
+                    "",
+                ]
+            )
+        fallback_contract = operation.get("fallback_contract")
+        if fallback_contract is not None:
+            lines.extend(
+                [
+                    "#### Operator diagnostic fallback",
+                    "",
+                    "This separate diagnostic fallback uses `proxy_http` and "
+                    "does not exercise `{}`. Its structured contract is:".format(
+                        operation["tool"]
+                    ),
+                    "",
+                    "```json",
+                    *_json_lines(fallback_contract),
                     "```",
                     "",
                 ]

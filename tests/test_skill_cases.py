@@ -127,6 +127,20 @@ def test_skill_evaluation_baseline_is_complete() -> None:
     for command in EXACT_INVALID_COMMANDS:
         assert command in baseline
 
+    delivery = next(
+        case for case in cases if case["id"] == "yandex-delivery-create-offer"
+    )
+    assert delivery["expected"] == {
+        "tool": None,
+        "provider_config_key": "yandex-delivery",
+        "operation_kind": "unsupported",
+        "approval_behavior": "not_applicable",
+        "verification_behavior": (
+            "Refuse to invent the missing product contract; do not execute an "
+            "empty create request or request mutation approval."
+        ),
+    }
+
 
 def test_paginated_eval_cases_document_their_result_and_cursor_contracts() -> None:
     document = json.loads(CASES_PATH.read_text(encoding="utf-8"))

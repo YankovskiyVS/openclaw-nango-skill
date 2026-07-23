@@ -54,19 +54,22 @@ EXPECTED_OPERATIONS = {
         "call yandex-mail info --query 'format=json' --json-output",
     ),
     "yandex-calendar": (
-        "call yandex-calendar calendars/ --json-output",
+        "call yandex-calendar calendars/ --method PROPFIND "
+        "--header 'Depth: 1' "
+        "--header 'Content-Type: application/xml; charset=utf-8' "
+        "--text '<?xml version=\"1.0\" encoding=\"utf-8\"?>"
+        "<d:propfind xmlns:d=\"DAV:\"><d:prop><d:displayname/></d:prop>"
+        "</d:propfind>' --json-output",
     ),
     "yandex-direct": (
         "call yandex-direct json/v5/campaigns --method POST --json "
-        """'{"method":"get","params":{"SelectionCriteria":{},"FieldNames":["Id","Name"]}}' """
+        """'{"method":"get","params":{"SelectionCriteria":{},"FieldNames":["Id","Name"],"""
+        """"Page":{"Limit":100,"Offset":0}}}' """
         "--json-output",
     ),
-    "yandex-maps": ("call yandex-maps v1/ --json-output",),
+    "yandex-maps": (),
     "yandex-market": ("call yandex-market v2/campaigns --json-output",),
-    "yandex-delivery": (
-        "call yandex-delivery api/b2b/platform/offers/create --method POST "
-        "--json '{}' --json-output",
-    ),
+    "yandex-delivery": (),
     "bitrix24": ("call bitrix24 user.current --json-output",),
     "bitrix24-crm": (
         "call bitrix24-crm crm.lead.list --json-output",
@@ -418,7 +421,10 @@ def test_every_endpoint_operation_has_complete_typed_reference_or_boundary():
                 assert match is not None, (entry["id"], operation["title"])
                 tool_call = json.loads(match.group(1))
                 assert tool_call["tool"] == operation["tool"]
-                assert tool_call["arguments"]["providerConfigKey"] == entry["id"]
+                assert tool_call["arguments"]["providerConfigKey"] == operation.get(
+                    "provider_config_key",
+                    entry["id"],
+                )
                 if operation["availability"] == "template":
                     assert "non-executable template" in section
             else:
@@ -458,6 +464,123 @@ def test_special_endpoint_boundaries_match_registered_runtime_surfaces():
     assert (
         '"path": "api/b2b/platform/offers/create"'
         not in refs["yandex-delivery"]
+    )
+
+
+def test_boundary_operations_never_publish_executable_fallback_commands():
+    document = json.loads(CATALOG_SOURCE.read_text(encoding="utf-8"))
+
+    for entry in document["skills"]:
+        for operation in entry["operations"]:
+            if operation["availability"] in {
+                "unsupported",
+                "blocked_contract",
+            }:
+                assert "command" not in operation, (
+                    entry["id"],
+                    operation["title"],
+                )
+                skill_text = (
+                    ROOT / "skills" / entry["id"] / "SKILL.md"
+                ).read_text(encoding="utf-8")
+                assert "```bash\n```" not in skill_text
+                assert "No catalog fallback command is published" in skill_text
+
+
+def test_legacy_alias_is_an_explicit_operation_level_provider_contract():
+    document = json.loads(CATALOG_SOURCE.read_text(encoding="utf-8"))
+    yandex_id = next(
+        entry for entry in document["skills"] if entry["id"] == "yandex-id"
+    )
+    legacy = next(
+        operation
+        for operation in yandex_id["operations"]
+        if operation["title"] == "legacy key"
+    )
+    endpoints = (
+        ROOT / "skills" / "yandex-id" / "references" / "endpoints.md"
+    ).read_text(encoding="utf-8")
+
+    assert legacy["provider_config_key"] == "yandex"
+    marker = "### {}".format(legacy["title"])
+    start = endpoints.index(marker)
+    section = endpoints[start:]
+    assert '"providerConfigKey": "yandex"' in section
+
+
+def test_action_diagnostic_fallback_has_a_separate_structured_contract():
+    document = json.loads(CATALOG_SOURCE.read_text(encoding="utf-8"))
+    yandex_mail = next(
+        entry for entry in document["skills"] if entry["id"] == "yandex-mail"
+    )
+    resolve = next(
+        operation
+        for operation in yandex_mail["operations"]
+        if operation["title"] == "Resolve mailbox email"
+    )
+    endpoints = (
+        ROOT / "skills" / "yandex-mail" / "references" / "endpoints.md"
+    ).read_text(encoding="utf-8")
+
+    assert resolve["tool"] == "nango_action"
+    assert resolve["fallback_contract"] == {
+        "transport": "proxy_http",
+        "operation_kind": "read",
+        "provider_config_key": "yandex-mail",
+        "method": "GET",
+        "path": "info",
+        "query": [{"name": "format", "value": "json"}],
+    }
+    assert "diagnostic fallback" in endpoints
+    assert "does not exercise `nango_action`" in endpoints
+
+
+def test_catalog_rejects_fallback_command_drift_from_structured_contract(
+    tmp_path,
+):
+    root = _make_repository(tmp_path)
+    document = json.loads(
+        (root / "catalog" / "skills.json").read_text(encoding="utf-8")
+    )
+    operation = document["skills"][0]["operations"][0]
+    operation["command"] = operation["command"].replace(
+        "--query 'format=json'",
+        "--query 'format=xml'",
+    )
+    (root / "catalog" / "skills.json").write_text(
+        json.dumps(document),
+        encoding="utf-8",
+    )
+
+    result = _run_generator(root)
+
+    assert result.returncode == 2
+    assert "fallback command does not match its structured contract" in (
+        result.stdout + result.stderr
+    )
+
+
+def test_catalog_rejects_command_on_non_executable_boundary(tmp_path):
+    root = _make_repository(tmp_path)
+    document = json.loads(
+        (root / "catalog" / "skills.json").read_text(encoding="utf-8")
+    )
+    maps = next(
+        entry for entry in document["skills"] if entry["id"] == "yandex-maps"
+    )
+    maps["operations"][0]["command"] = (
+        "call yandex-maps invented/path --json-output"
+    )
+    (root / "catalog" / "skills.json").write_text(
+        json.dumps(document),
+        encoding="utf-8",
+    )
+
+    result = _run_generator(root)
+
+    assert result.returncode == 2
+    assert "non-executable boundary cannot declare a command" in (
+        result.stdout + result.stderr
     )
 
 

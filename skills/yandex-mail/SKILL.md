@@ -58,7 +58,7 @@ Request inputs are strict: relative `path`, ordered `query` pairs, bounded heade
 Keep this compatibility path for diagnostics or deployments where the plugin is unavailable. It requires `NANGO_PROXY_URL`, `EVOLUTION_PROJECT_ID`, `EVOCLAW_ID`, `CLOUDRU_API_KEY`, Python 3, and `httpx`. An operator must explicitly choose it. Mutations still need approval and post-write verification.
 
 ```bash
-# Resolve mailbox email
+# Resolve mailbox email — diagnostic proxy fallback; does not exercise nango_action
 python3 {baseDir}/scripts/nango_proxy.py call yandex-mail info --query 'format=json' --json-output
 ```
 

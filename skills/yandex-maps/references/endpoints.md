@@ -22,7 +22,7 @@
 
 #### Non-executable boundary
 
-No executable typed tool call is available. The legacy command remains only in `SKILL.md` as an operator fallback; do not execute it without the missing verified contract.
+No executable typed tool call or catalog fallback command is available. Keep the packaged generic HTTP client for operator-supplied documented paths, but do not invent this missing product contract.
 
 ## Notes
 

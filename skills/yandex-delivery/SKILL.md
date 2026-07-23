@@ -35,10 +35,7 @@ Request inputs are strict: relative `path`, ordered `query` pairs, bounded heade
 
 Keep this compatibility path for diagnostics or deployments where the plugin is unavailable. It requires `NANGO_PROXY_URL`, `EVOLUTION_PROJECT_ID`, `EVOCLAW_ID`, `CLOUDRU_API_KEY`, Python 3, and `httpx`. An operator must explicitly choose it. Mutations still need approval and post-write verification.
 
-```bash
-# Legacy create shape — do not execute without real required fields
-python3 {baseDir}/scripts/nango_proxy.py call yandex-delivery api/b2b/platform/offers/create --method POST --json '{}' --json-output
-```
+No catalog fallback command is published for this unavailable product contract. The generic client remains packaged for an operator-supplied documented path.
 
 The fallback preserves the full generic HTTP flags documented in `{baseDir}/references/api-reference.md`.
 
