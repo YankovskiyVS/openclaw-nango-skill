@@ -310,6 +310,47 @@ def _content_type(response: httpx.Response) -> str:
     return content_type
 
 
+def _response_has_body(response: httpx.Response) -> bool:
+    return (
+        response.request.method.upper() != "HEAD"
+        and response.status_code not in {204, 304}
+        and not 100 <= response.status_code < 200
+    )
+
+
+def _declared_response_size(response: httpx.Response) -> int | None:
+    if not _response_has_body(response):
+        return 0
+    raw_size = response.headers.get("content-length")
+    if raw_size is None or not raw_size.isascii() or not raw_size.isdecimal():
+        return None
+    try:
+        return int(raw_size)
+    except (ValueError, OverflowError):
+        return None
+
+
+def _read_bounded_response(response: httpx.Response) -> httpx.Response | None:
+    declared_size = _declared_response_size(response)
+    if declared_size is not None and declared_size > MAX_RESPONSE_BYTES:
+        return None
+
+    content = bytearray()
+    for chunk in response.iter_bytes():
+        remaining = MAX_RESPONSE_BYTES + 1 - len(content)
+        content.extend(chunk[:remaining])
+        if len(content) > MAX_RESPONSE_BYTES:
+            return None
+
+    return httpx.Response(
+        response.status_code,
+        headers=response.headers,
+        content=bytes(content),
+        request=response.request,
+        extensions=response.extensions,
+    )
+
+
 def _response_body(response: httpx.Response) -> Any:
     content = response.content
     content_type = _content_type(response)
@@ -741,12 +782,13 @@ def cmd_call(args: argparse.Namespace) -> int:
 
     try:
         with httpx.Client(timeout=timeout, follow_redirects=False) as client:
-            response = client.request(
+            with client.stream(
                 method,
                 url,
                 headers=headers,
                 content=content,
-            )
+            ) as streamed_response:
+                response = _read_bounded_response(streamed_response)
     except httpx.TimeoutException as exc:
         dispatched = not isinstance(exc, (httpx.ConnectTimeout, httpx.PoolTimeout))
         if is_mutation and dispatched:
@@ -792,25 +834,29 @@ def cmd_call(args: argparse.Namespace) -> int:
             outcome="not_started",
         )
 
-    succeeded = 200 <= response.status_code < 300
+    succeeded = 200 <= streamed_response.status_code < 300
     if not succeeded:
-        if response.has_redirect_location:
+        if streamed_response.has_redirect_location:
             return _emit_failure(
                 args,
                 request,
                 layer="unknown_upstream",
                 code="redirect_blocked",
                 message="Credentialed redirect was blocked",
-                status=response.status_code,
+                status=streamed_response.status_code,
                 retryable=False,
                 outcome="confirmed_failed",
             )
-        try:
-            layer, code = _explicit_upstream_error(response)
-        except _JSON_RESOURCE_ERRORS:
-            return _emit_invalid_response(args, request, response)
+        if response is None:
+            layer, code = "unknown_upstream", "upstream_http_error"
+        else:
+            try:
+                layer, code = _explicit_upstream_error(response)
+            except _JSON_RESOURCE_ERRORS:
+                return _emit_invalid_response(args, request, response)
         retryable = not is_mutation and (
-            response.status_code in {408, 429} or response.status_code >= 500
+            streamed_response.status_code in {408, 429}
+            or streamed_response.status_code >= 500
         )
         return _emit_failure(
             args,
@@ -818,10 +864,13 @@ def cmd_call(args: argparse.Namespace) -> int:
             layer=layer,
             code=code,
             message="Upstream request failed",
-            status=response.status_code,
+            status=streamed_response.status_code,
             retryable=retryable,
             outcome="confirmed_failed",
         )
+
+    if response is None:
+        return _emit_invalid_response(args, request, streamed_response)
 
     try:
         response_payload = _response_payload(response)
@@ -858,9 +907,14 @@ def cmd_health(args: argparse.Namespace) -> int:
     url = f"{proxy_url}/health"
     try:
         with httpx.Client(timeout=timeout, follow_redirects=False) as client:
-            response = client.get(url)
+            with client.stream("GET", url) as streamed_response:
+                response = _read_bounded_response(streamed_response)
     except httpx.RequestError:
         print("ERROR network/network_error: Health request failed")
+        return 1
+
+    if response is None:
+        print("ERROR unknown_upstream/invalid_response: Health response is invalid")
         return 1
 
     try:
