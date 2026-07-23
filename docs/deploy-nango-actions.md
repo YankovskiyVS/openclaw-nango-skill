@@ -59,6 +59,19 @@ npm run build
 docker build -t openclaw-yandex-mail-bridge:reviewed .
 ```
 
+The regular test suite skips the real Redis/Lua integration unless the exact
+`MAIL_BRIDGE_TEST_REDIS_URL` variable is present. To run that gate, point it
+only at a disposable Redis instance:
+
+```bash
+MAIL_BRIDGE_TEST_REDIS_URL=redis://127.0.0.1:6379 npm run test:redis
+```
+
+The test creates unique random keys with a 10-second TTL, never calls
+`FLUSHDB`, and closes both independent clients. CI supplies a dedicated
+health-checked `redis:7.4-alpine` service; do not point this test at a shared or
+production Redis.
+
 Deploy it behind an exact HTTPS origin. Configure:
 
 | Variable | Meaning |

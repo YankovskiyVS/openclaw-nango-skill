@@ -74,3 +74,30 @@ jobs:
       - run: docker build --tag openclaw-yandex-mail-bridge:ci .
         working-directory: mail-bridge
       - run: git diff --exit-code
+
+  redis-integration:
+    name: Redis 7.4 Lua integration
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.22.2
+          cache: npm
+          cache-dependency-path: mail-bridge/package-lock.json
+      - run: npm ci
+        working-directory: mail-bridge
+      - run: npm run test:redis
+        working-directory: mail-bridge
+        env:
+          MAIL_BRIDGE_TEST_REDIS_URL: redis://127.0.0.1:6379

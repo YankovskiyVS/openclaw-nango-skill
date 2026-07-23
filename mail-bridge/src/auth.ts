@@ -153,7 +153,7 @@ export class InMemoryAtomicStore implements AtomicStateStore {
     }
 }
 
-type RedisClientLike = {
+export type RedisClientLike = {
     connect(): Promise<unknown>;
     eval(script: string, options: { keys: string[]; arguments: string[] }): Promise<unknown>;
     on(event: 'error', listener: (error: unknown) => void): unknown;

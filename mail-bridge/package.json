@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:redis": "node -e \"if (!process.env.MAIL_BRIDGE_TEST_REDIS_URL) throw new Error('MAIL_BRIDGE_TEST_REDIS_URL is required')\" && vitest run test/redis.integration.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/src/server.js"
