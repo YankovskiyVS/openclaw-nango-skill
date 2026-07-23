@@ -16,19 +16,27 @@ const BASE64_RE =
 const BLOCKED_HEADERS = new Set([
   "api-key",
   "authorization",
+  "base-url-override",
   "connection",
+  "connection-id",
   "content-length",
   "cookie",
+  "decompress",
   "host",
   "keep-alive",
   "proxy-authorization",
   "proxy-connection",
+  "provider-config-key",
+  "retries",
   "set-cookie",
   "te",
   "trailer",
   "transfer-encoding",
   "upgrade",
   "x-api-key",
+  "x-http-method",
+  "x-http-method-override",
+  "x-method-override",
 ]);
 const BLOCKED_HEADER_PREFIXES = [
   "x-cloud-ru-",
@@ -37,6 +45,7 @@ const BLOCKED_HEADER_PREFIXES = [
   "x-evolution-",
   "x-nango-",
 ] as const;
+const NANGO_PASSTHROUGH_HEADER_PREFIX = "nango-proxy-";
 
 export const HTTP_METHODS = Object.freeze([
   "GET",
@@ -254,10 +263,19 @@ export function validateProviderHeaders(
     }
 
     const normalizedName = name.toLowerCase();
+    let effectiveName = normalizedName;
+    while (effectiveName.startsWith(NANGO_PASSTHROUGH_HEADER_PREFIX)) {
+      effectiveName = effectiveName.slice(
+        NANGO_PASSTHROUGH_HEADER_PREFIX.length,
+      );
+      if (effectiveName.length === 0) {
+        fail("blocked_header");
+      }
+    }
     if (
-      BLOCKED_HEADERS.has(normalizedName) ||
+      BLOCKED_HEADERS.has(effectiveName) ||
       BLOCKED_HEADER_PREFIXES.some((prefix) =>
-        normalizedName.startsWith(prefix),
+        effectiveName.startsWith(prefix),
       )
     ) {
       fail("blocked_header");

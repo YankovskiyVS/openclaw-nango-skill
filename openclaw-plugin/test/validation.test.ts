@@ -199,6 +199,7 @@ describe("provider header validation", () => {
     const input = {
       Depth: "1",
       "X-Provider-Feature": "first:second",
+      "Nango-Proxy-X-Provider-Feature": "passthrough",
     };
 
     const validated = validateProviderHeaders(input);
@@ -206,6 +207,7 @@ describe("provider header validation", () => {
     expect(validated).toEqual({
       depth: "1",
       "x-provider-feature": "first:second",
+      "nango-proxy-x-provider-feature": "passthrough",
     });
     expect(Object.isFrozen(validated)).toBe(true);
     input.Depth = "infinity";
@@ -241,6 +243,30 @@ describe("provider header validation", () => {
     "X-Cloudru-Api-Key",
     "X-EvoClaw-Id",
     "X-Evolution-Project-Id",
+    "Provider-Config-Key",
+    "Connection-Id",
+    "Retries",
+    "Base-Url-Override",
+    "Decompress",
+    "X-HTTP-Method-Override",
+    "X-HTTP-Method",
+    "X-Method-Override",
+    "Nango-Proxy-Authorization",
+    "Nango-Proxy-Proxy-Authorization",
+    "Nango-Proxy-Cookie",
+    "Nango-Proxy-Set-Cookie",
+    "Nango-Proxy-Host",
+    "Nango-Proxy-Connection",
+    "Nango-Proxy-Transfer-Encoding",
+    "Nango-Proxy-Content-Length",
+    "Nango-Proxy-Provider-Config-Key",
+    "Nango-Proxy-Connection-Id",
+    "Nango-Proxy-Retries",
+    "Nango-Proxy-Base-Url-Override",
+    "Nango-Proxy-Decompress",
+    "Nango-Proxy-X-HTTP-Method-Override",
+    "Nango-Proxy-Nango-Proxy-Authorization",
+    "Nango-Proxy-X-Nango-Connection-Id",
   ])("rejects credential, routing and hop-by-hop header %s", (name) => {
     expectValidationCode(
       () => validateProviderHeaders({ [name]: "header-secret-sentinel" }),
@@ -442,6 +468,9 @@ describe("strict runtime plugin config", () => {
 
   test.each([
     ["line\r\nsecret", "invalid_secret"],
+    ["control\u0000secret", "invalid_secret"],
+    ["control\tsecret", "invalid_secret"],
+    ["control\u007fsecret", "invalid_secret"],
     ["", "invalid_secret"],
   ])("rejects unsafe literal secrets without echoing them", (apiKey, code) => {
     expectConfigCode(
@@ -890,7 +919,7 @@ describe("manifest config contract", () => {
           type: "string",
           minLength: 1,
           maxLength: 4_096,
-          pattern: "^[^\\r\\n]+$",
+          pattern: "^[^\\u0000-\\u001F\\u007F]+$",
         },
         {
           type: "object",

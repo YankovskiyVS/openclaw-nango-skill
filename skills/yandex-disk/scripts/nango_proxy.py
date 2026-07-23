@@ -65,24 +65,33 @@ CATALOG_PROVIDERS = frozenset(
 
 _ENCODED_SLASH_RE = re.compile(r"%(?:2f|5c)", re.IGNORECASE)
 _PERCENT_ESCAPE_RE = re.compile(r"%[0-9a-fA-F]{2}")
+_HTTP_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _HEADER_NAME_RE = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")
 _BLOCKED_REQUEST_HEADERS = frozenset(
     {
         "api-key",
         "authorization",
+        "base-url-override",
         "connection",
+        "connection-id",
         "content-length",
         "cookie",
+        "decompress",
         "host",
         "keep-alive",
         "proxy-authorization",
         "proxy-connection",
+        "provider-config-key",
+        "retries",
         "set-cookie",
         "te",
         "trailer",
         "transfer-encoding",
         "upgrade",
         "x-api-key",
+        "x-http-method",
+        "x-http-method-override",
+        "x-method-override",
     }
 )
 _BLOCKED_REQUEST_HEADER_PREFIXES = (
@@ -92,6 +101,7 @@ _BLOCKED_REQUEST_HEADER_PREFIXES = (
     "x-evolution-",
     "x-nango-",
 )
+_NANGO_PASSTHROUGH_HEADER_PREFIX = "nango-proxy-"
 _SAFE_RESPONSE_HEADERS = frozenset(
     {
         "etag",
@@ -152,8 +162,7 @@ def _validated_api_key(value: str) -> str:
     api_key = value.strip()
     if (
         not api_key
-        or "\r" in api_key
-        or "\n" in api_key
+        or _HTTP_CONTROL_RE.search(api_key) is not None
         or len(api_key.encode("utf-8")) > MAX_API_KEY_FILE_BYTES
     ):
         raise ValueError("API key is invalid")
@@ -190,6 +199,17 @@ def _resolve_api_key(
     return _validated_api_key(api_key)
 
 
+def _is_blocked_request_header(normalized_name: str) -> bool:
+    effective_name = normalized_name
+    while effective_name.startswith(_NANGO_PASSTHROUGH_HEADER_PREFIX):
+        effective_name = effective_name[len(_NANGO_PASSTHROUGH_HEADER_PREFIX) :]
+        if not effective_name:
+            return True
+    return effective_name in _BLOCKED_REQUEST_HEADERS or effective_name.startswith(
+        _BLOCKED_REQUEST_HEADER_PREFIXES
+    )
+
+
 def _parse_headers(raw: list[str]) -> dict[str, str]:
     headers: dict[str, str] = {}
     for item in raw:
@@ -202,9 +222,7 @@ def _parse_headers(raw: list[str]) -> dict[str, str]:
         if _HEADER_NAME_RE.fullmatch(name) is None:
             raise ValueError("Invalid header name")
         normalized_name = name.lower()
-        if normalized_name in _BLOCKED_REQUEST_HEADERS or normalized_name.startswith(
-            _BLOCKED_REQUEST_HEADER_PREFIXES
-        ):
+        if _is_blocked_request_header(normalized_name):
             raise ValueError("Header is not allowed for provider requests")
         value = value.strip()
         try:

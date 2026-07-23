@@ -67,7 +67,7 @@ const SECRET_INPUT_SCHEMA = {
       type: "string",
       minLength: 1,
       maxLength: 4_096,
-      pattern: "^[^\\r\\n]+$",
+      pattern: "^[^\\u0000-\\u001F\\u007F]+$",
     },
     {
       type: "object",
@@ -436,8 +436,7 @@ function parseLiteralSecret(value: unknown): string {
     typeof value !== "string" ||
     utf8Bytes(value) < 1 ||
     utf8Bytes(value) > MAX_SECRET_BYTES ||
-    value.includes("\r") ||
-    value.includes("\n")
+    CONTROL_RE.test(value)
   ) {
     fail("invalid_secret");
   }

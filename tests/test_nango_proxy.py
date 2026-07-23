@@ -168,10 +168,15 @@ def test_build_url_rejects_unsafe_query(query: str) -> None:
 
 def test_parse_headers_preserves_safe_provider_headers() -> None:
     assert nango_proxy._parse_headers(
-        ["Depth: 1", "X-Provider-Feature: first:second"]
+        [
+            "Depth: 1",
+            "X-Provider-Feature: first:second",
+            "Nango-Proxy-X-Provider-Feature: passthrough",
+        ]
     ) == {
         "Depth": "1",
         "X-Provider-Feature": "first:second",
+        "Nango-Proxy-X-Provider-Feature": "passthrough",
     }
 
 
@@ -196,6 +201,30 @@ def test_parse_headers_preserves_safe_provider_headers() -> None:
         "X-Cloudru-Api-Key",
         "X-Evolution-Project-Id",
         "X-EvoClaw-Id",
+        "Provider-Config-Key",
+        "Connection-Id",
+        "Retries",
+        "Base-Url-Override",
+        "Decompress",
+        "X-HTTP-Method-Override",
+        "X-HTTP-Method",
+        "X-Method-Override",
+        "Nango-Proxy-Authorization",
+        "Nango-Proxy-Proxy-Authorization",
+        "Nango-Proxy-Cookie",
+        "Nango-Proxy-Set-Cookie",
+        "Nango-Proxy-Host",
+        "Nango-Proxy-Connection",
+        "Nango-Proxy-Transfer-Encoding",
+        "Nango-Proxy-Content-Length",
+        "Nango-Proxy-Provider-Config-Key",
+        "Nango-Proxy-Connection-Id",
+        "Nango-Proxy-Retries",
+        "Nango-Proxy-Base-Url-Override",
+        "Nango-Proxy-Decompress",
+        "Nango-Proxy-X-HTTP-Method-Override",
+        "Nango-Proxy-Nango-Proxy-Authorization",
+        "Nango-Proxy-X-Nango-Connection-Id",
     ],
 )
 def test_parse_headers_rejects_credential_routing_and_hop_headers(
@@ -227,6 +256,16 @@ def test_parse_headers_does_not_echo_a_rejected_secret() -> None:
         nango_proxy._parse_headers([f"Authorization: {secret}"])
 
     assert secret not in str(error.value)
+
+
+@pytest.mark.parametrize("api_key", ["key\x00tail", "key\ttail", "key\x7ftail"])
+def test_api_key_rejects_http_control_bytes_without_echoing_them(
+    api_key: str,
+) -> None:
+    with pytest.raises(ValueError) as error:
+        nango_proxy._validated_api_key(api_key)
+
+    assert api_key not in str(error.value)
 
 
 def test_non_ascii_header_value_is_rejected_safely_before_client_construction(

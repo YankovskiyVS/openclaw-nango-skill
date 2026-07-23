@@ -68,7 +68,7 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 4096,
-                "pattern": "^[^\\r\\n]+$"
+                "pattern": "^[^\\u0000-\\u001F\\u007F]+$"
               },
               {
                 "type": "object",
@@ -236,7 +236,7 @@
                         "type": "string",
                         "minLength": 1,
                         "maxLength": 4096,
-                        "pattern": "^[^\\r\\n]+$"
+                        "pattern": "^[^\\u0000-\\u001F\\u007F]+$"
                       },
                       {
                         "type": "object",
