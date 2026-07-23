@@ -32,7 +32,8 @@
     }
   },
   "dependencies": {
-    "typebox": "1.1.39"
+    "typebox": "1.1.39",
+    "undici": "8.8.0"
   },
   "peerDependencies": {
     "openclaw": ">=2026.6.11"
