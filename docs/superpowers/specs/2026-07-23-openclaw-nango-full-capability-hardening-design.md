@@ -226,7 +226,7 @@ the agent to verify state before considering any repeat.
 
 Text responses are UTF-8 decoded with replacement and capped. JSON is parsed
 only when the content type is JSON. Binary bodies are represented by size,
-content type and a truncated SHA-256 digest, not printed.
+content type and the full SHA-256 digest, not printed.
 
 ## Provider capability preservation
 
