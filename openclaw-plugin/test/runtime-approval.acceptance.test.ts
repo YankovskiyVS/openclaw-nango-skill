@@ -212,6 +212,26 @@ function mergeDeferredApprovalParams(
   };
 }
 
+type RegisteredToolResult = Awaited<
+  ReturnType<RegisteredTool["execute"]>
+>;
+
+const APPROVAL_REQUIRED_DETAILS = {
+  ok: false,
+  request: {
+    providerConfigKey: "yandex-id",
+    method: "GET",
+    path: "<invalid>",
+  },
+  error: {
+    layer: "approval",
+    code: "approval_required",
+    message: "One-time approval is required",
+    retryable: false,
+  },
+  outcome: "not_started",
+} as const;
+
 function expectModelContentMatchesDetails(result: {
   content: Array<{ type: "text"; text: string }>;
   details: unknown;
@@ -222,6 +242,85 @@ function expectModelContentMatchesDetails(result: {
       text: JSON.stringify(result.details),
     },
   ]);
+}
+
+function requireApprovalProof(
+  params: Record<string, unknown>,
+): string {
+  const proof = params[APPROVAL_PROOF_PARAM];
+  expect(proof).toEqual(expect.stringMatching(/^v1\./));
+  if (typeof proof !== "string") {
+    throw new Error("approval proof was not a string");
+  }
+  return proof;
+}
+
+function expectExactApprovalRequired(
+  result: RegisteredToolResult,
+  forbiddenStrings: readonly string[],
+) {
+  expect(result.details).toEqual(APPROVAL_REQUIRED_DETAILS);
+  expectModelContentMatchesDetails(result);
+  const serialized = JSON.stringify(result);
+  for (const forbidden of forbiddenStrings) {
+    expect(forbidden.length).toBeGreaterThan(0);
+    expect(serialized).not.toContain(forbidden);
+  }
+}
+
+async function expectMismatchConsumesFreshApproval(options: {
+  toolCallId: string;
+  params: Record<string, unknown>;
+  forbiddenParamStrings: readonly string[];
+  changeApprovedParams(
+    approved: Record<string, unknown>,
+  ): Record<string, unknown>;
+}) {
+  const proxy = await startLocalProxy((_request, response) => {
+    response.writeHead(200, {
+      "content-type": "application/json",
+    });
+    response.end(JSON.stringify({ shouldNotRun: true }));
+  });
+  try {
+    const runtime = registerRuntime(proxy.baseUrl);
+    const hook = await runHook(
+      "nango_proxy_request",
+      options.toolCallId,
+      options.params,
+    );
+    if (hook.blocked || hook.deferredApproval === undefined) {
+      throw new Error("expected deferred approval");
+    }
+    const deferred = hook.deferredApproval;
+    await deferred.approval.onResolution?.(
+      PluginApprovalResolutions.ALLOW_ONCE,
+    );
+    const approved = mergeDeferredApprovalParams(deferred);
+    const proof = requireApprovalProof(approved);
+    const mismatched = options.changeApprovedParams(approved);
+    const forbidden = [
+      CLOUDRU_KEY,
+      proof,
+      ...options.forbiddenParamStrings,
+      JSON.stringify(options.params),
+      JSON.stringify(mismatched),
+    ];
+
+    const mismatchResult = await runtime
+      .tool("nango_proxy_request")
+      .execute(options.toolCallId, mismatched);
+    expectExactApprovalRequired(mismatchResult, forbidden);
+    expect(proxy.requests).toHaveLength(0);
+
+    const originalResult = await runtime
+      .tool("nango_proxy_request")
+      .execute(options.toolCallId, approved);
+    expectExactApprovalRequired(originalResult, forbidden);
+    expect(proxy.requests).toHaveLength(0);
+  } finally {
+    await proxy.close();
+  }
 }
 
 afterEach(() => {
@@ -436,9 +535,7 @@ describe.sequential("registered OpenClaw runtime acceptance", () => {
         PluginApprovalResolutions.ALLOW_ONCE,
       );
       const approved = mergeDeferredApprovalParams(deferred);
-      expect(approved[APPROVAL_PROOF_PARAM]).toEqual(
-        expect.stringMatching(/^v1\./),
-      );
+      const proof = requireApprovalProof(approved);
 
       const result = await runtime
         .tool("nango_proxy_request")
@@ -483,86 +580,76 @@ describe.sequential("registered OpenClaw runtime acceptance", () => {
       const replay = await runtime
         .tool("nango_proxy_request")
         .execute("mutation-call", approved);
-      expect(replay.details).toMatchObject({
-        ok: false,
-        error: {
-          layer: "approval",
-          code: "approval_required",
-        },
-        outcome: "not_started",
-      });
-      expectModelContentMatchesDetails(replay);
+      expectExactApprovalRequired(replay, [
+        CLOUDRU_KEY,
+        proof,
+        "api/v4/leads/42",
+        "Approved lead",
+        "trace-42",
+        JSON.stringify(params),
+        JSON.stringify(approved),
+      ]);
       expect(proxy.requests).toHaveLength(1);
     } finally {
       await proxy.close();
     }
   });
 
-  test("consumes a fresh approval when path or body does not match", async () => {
-    const proxy = await startLocalProxy((_request, response) => {
-      response.writeHead(200, {
-        "content-type": "application/json",
-      });
-      response.end(JSON.stringify({ shouldNotRun: true }));
-    });
-    try {
-      const runtime = registerRuntime(proxy.baseUrl);
-      const params = {
+  test("consumes a fresh approval when only the path changes", async () => {
+    await expectMismatchConsumesFreshApproval({
+      toolCallId: "path-mismatch-call",
+      params: {
         providerConfigKey: "amocrm-crm",
         method: "PATCH",
-        path: "api/v4/leads/42",
-        jsonBody: { name: "Approved lead" },
-      };
-      const hook = await runHook(
-        "nango_proxy_request",
-        "mismatch-call",
-        params,
-      );
-      if (hook.blocked || hook.deferredApproval === undefined) {
-        throw new Error("expected deferred approval");
-      }
-      const deferred = hook.deferredApproval;
-      await deferred.approval.onResolution?.(
-        PluginApprovalResolutions.ALLOW_ONCE,
-      );
-      const approved = mergeDeferredApprovalParams(deferred);
-      const mismatched = {
-        ...approved,
-        path: "api/v4/leads/43",
-        jsonBody: { name: "Changed after approval" },
-      };
+        path: "api/v4/leads/path-original-42",
+        jsonBody: { marker: "path-body-unchanged-sentinel" },
+      },
+      forbiddenParamStrings: [
+        "amocrm-crm",
+        "api/v4/leads/path-original-42",
+        "api/v4/leads/path-changed-43",
+        "path-body-unchanged-sentinel",
+      ],
+      changeApprovedParams(approved) {
+        return {
+          ...approved,
+          path: "api/v4/leads/path-changed-43",
+        };
+      },
+    });
+  });
 
-      const mismatchResult = await runtime
-        .tool("nango_proxy_request")
-        .execute("mismatch-call", mismatched);
-      expect(mismatchResult.details).toMatchObject({
-        ok: false,
-        error: { code: "approval_required" },
-        outcome: "not_started",
-      });
-      expect(proxy.requests).toHaveLength(0);
-
-      const originalResult = await runtime
-        .tool("nango_proxy_request")
-        .execute("mismatch-call", approved);
-      expect(originalResult.details).toMatchObject({
-        ok: false,
-        error: { code: "approval_required" },
-        outcome: "not_started",
-      });
-      expect(proxy.requests).toHaveLength(0);
-    } finally {
-      await proxy.close();
-    }
+  test("consumes a fresh approval when only the body changes", async () => {
+    await expectMismatchConsumesFreshApproval({
+      toolCallId: "body-mismatch-call",
+      params: {
+        providerConfigKey: "amocrm-crm",
+        method: "PATCH",
+        path: "api/v4/leads/body-original-52",
+        jsonBody: { marker: "body-original-sentinel" },
+      },
+      forbiddenParamStrings: [
+        "amocrm-crm",
+        "api/v4/leads/body-original-52",
+        "body-original-sentinel",
+        "body-changed-sentinel",
+      ],
+      changeApprovedParams(approved) {
+        return {
+          ...approved,
+          jsonBody: { marker: "body-changed-sentinel" },
+        };
+      },
+    });
   });
 
   test.each([
-    ["no resolution", undefined],
-    ["deny", PluginApprovalResolutions.DENY],
-    ["timeout", PluginApprovalResolutions.TIMEOUT],
+    ["no resolution", undefined, "pending"],
+    ["deny", PluginApprovalResolutions.DENY, "deny"],
+    ["timeout", PluginApprovalResolutions.TIMEOUT, "timeout"],
   ] as const)(
     "does not execute a deferred mutation after %s",
-    async (_label, resolution) => {
+    async (_label, resolution, slug) => {
       const proxy = await startLocalProxy((_request, response) => {
         response.writeHead(200, {
           "content-type": "application/json",
@@ -573,8 +660,14 @@ describe.sequential("registered OpenClaw runtime acceptance", () => {
         const runtime = registerRuntime(proxy.baseUrl);
         const params = {
           providerConfigKey: "amocrm-crm",
-          method: "DELETE",
-          path: "api/v4/leads/42",
+          method: "PATCH",
+          path: `api/v4/leads/${slug}-raw-path-sentinel`,
+          headers: {
+            "X-Provider-Trace": `${slug}-raw-header-sentinel`,
+          },
+          jsonBody: {
+            marker: `${slug}-raw-body-sentinel`,
+          },
         };
         const hook = await runHook(
           "nango_proxy_request",
@@ -590,6 +683,7 @@ describe.sequential("registered OpenClaw runtime acceptance", () => {
         }
         const withUnusableProof =
           mergeDeferredApprovalParams(deferred);
+        const proof = requireApprovalProof(withUnusableProof);
 
         const result = await runtime
           .tool("nango_proxy_request")
@@ -598,15 +692,16 @@ describe.sequential("registered OpenClaw runtime acceptance", () => {
             withUnusableProof,
           );
 
-        expect(result.details).toMatchObject({
-          ok: false,
-          error: {
-            layer: "approval",
-            code: "approval_required",
-          },
-          outcome: "not_started",
-        });
-        expectModelContentMatchesDetails(result);
+        expectExactApprovalRequired(result, [
+          CLOUDRU_KEY,
+          proof,
+          "amocrm-crm",
+          `api/v4/leads/${slug}-raw-path-sentinel`,
+          `${slug}-raw-header-sentinel`,
+          `${slug}-raw-body-sentinel`,
+          JSON.stringify(params),
+          JSON.stringify(withUnusableProof),
+        ]);
         expect(proxy.requests).toHaveLength(0);
       } finally {
         await proxy.close();
