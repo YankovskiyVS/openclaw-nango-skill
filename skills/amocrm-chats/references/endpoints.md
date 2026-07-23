@@ -11,5 +11,5 @@
 ### Talks
 
 ```bash
-python3 scripts/nango_proxy.py call amocrm-chats api/v4/talks --json-output
+python3 {baseDir}/scripts/nango_proxy.py call amocrm-chats api/v4/talks --json-output
 ```

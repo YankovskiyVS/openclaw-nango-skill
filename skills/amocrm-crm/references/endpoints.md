@@ -11,11 +11,11 @@
 ### Leads
 
 ```bash
-python3 scripts/nango_proxy.py call amocrm-crm api/v4/leads --json-output
+python3 {baseDir}/scripts/nango_proxy.py call amocrm-crm api/v4/leads --json-output
 ```
 
 ### Contacts
 
 ```bash
-python3 scripts/nango_proxy.py call amocrm-crm api/v4/contacts --json-output
+python3 {baseDir}/scripts/nango_proxy.py call amocrm-crm api/v4/contacts --json-output
 ```

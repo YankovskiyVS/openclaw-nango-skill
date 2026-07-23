@@ -1,23 +1,12 @@
 ---
 name: bitrix24-crm
-description: Call Bitrix24 CRM REST (leads, deals, contacts) via Nango proxy
-timeout_sec: 300
-required_pip:
-  - httpx
-required_env:
-  - NANGO_PROXY_URL
-  - EVOLUTION_PROJECT_ID
-  - EVOCLAW_ID
-  - CLOUDRU_API_KEY
+description: "Call Bitrix24 CRM REST (leads, deals, contacts) via Nango proxy"
 allowed-tools: Fetch HTTP
 metadata:
   openclaw:
     requires:
-      env:
-        - NANGO_PROXY_URL
-        - EVOLUTION_PROJECT_ID
-        - EVOCLAW_ID
-        - CLOUDRU_API_KEY
+      env: [NANGO_PROXY_URL, EVOLUTION_PROJECT_ID, EVOCLAW_ID, CLOUDRU_API_KEY]
+      bins: [python3]
     primaryEnv: CLOUDRU_API_KEY
   nango:
     family: bitrix24
@@ -28,14 +17,13 @@ metadata:
 > **Required pip:** `httpx`  
 > **Install only if** this EvoClaw has OAuth connection for `bitrix24-crm` in Cloud.ru console.
 
-
 ## What this skill does
 
 **Bitrix24 CRM** — authenticated HTTP via **ai-assistant-nango-proxy** → Nango → provider API.
 
 - Nango `provider_config_key`: **`bitrix24-crm`**
 - Scopes / access: `crm`
-- Upstream base (via Nango): `https://{{domain}}/rest`
+- Upstream base (via Nango): `https://{domain}/rest`
 
 OpenClaw never sees OAuth tokens or the Nango secret.
 
@@ -80,7 +68,6 @@ Flags: `--method`, `--json`, `--body-file`, `--query`, `--header`, `--timeout`, 
 ## Notes
 
 Requires OAuth connection for provider_config_key bitrix24-crm.
-
 
 ## References
 

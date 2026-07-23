@@ -11,5 +11,5 @@
 ### Events
 
 ```bash
-python3 scripts/nango_proxy.py call amocrm-events api/v4/events --json-output
+python3 {baseDir}/scripts/nango_proxy.py call amocrm-events api/v4/events --json-output
 ```

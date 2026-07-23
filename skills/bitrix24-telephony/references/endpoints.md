@@ -11,5 +11,5 @@
 ### External lines
 
 ```bash
-python3 scripts/nango_proxy.py call bitrix24-telephony telephony.externalLine.get --json-output
+python3 {baseDir}/scripts/nango_proxy.py call bitrix24-telephony telephony.externalLine.get --json-output
 ```

@@ -11,13 +11,13 @@
 ### Disk meta
 
 ```bash
-python3 scripts/nango_proxy.py call yandex-disk v1/disk --json-output
+python3 {baseDir}/scripts/nango_proxy.py call yandex-disk v1/disk --json-output
 ```
 
 ### List root
 
 ```bash
-python3 scripts/nango_proxy.py call yandex-disk 'v1/disk/resources' --query 'path=/' --json-output
+python3 {baseDir}/scripts/nango_proxy.py call yandex-disk 'v1/disk/resources' --query 'path=/' --json-output
 ```
 
 ## Notes

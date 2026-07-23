@@ -1,23 +1,12 @@
 ---
 name: yandex-mail
-description: Use Yandex Mail OAuth token (IMAP/SMTP XOAUTH2) obtained via Nango
-timeout_sec: 300
-required_pip:
-  - httpx
-required_env:
-  - NANGO_PROXY_URL
-  - EVOLUTION_PROJECT_ID
-  - EVOCLAW_ID
-  - CLOUDRU_API_KEY
+description: "Use Yandex Mail OAuth token (IMAP/SMTP XOAUTH2) obtained via Nango"
 allowed-tools: Fetch HTTP
 metadata:
   openclaw:
     requires:
-      env:
-        - NANGO_PROXY_URL
-        - EVOLUTION_PROJECT_ID
-        - EVOCLAW_ID
-        - CLOUDRU_API_KEY
+      env: [NANGO_PROXY_URL, EVOLUTION_PROJECT_ID, EVOCLAW_ID, CLOUDRU_API_KEY]
+      bins: [python3]
     primaryEnv: CLOUDRU_API_KEY
   nango:
     family: yandex
@@ -27,7 +16,6 @@ metadata:
 > **Required env:** `NANGO_PROXY_URL`, `EVOLUTION_PROJECT_ID`, `EVOCLAW_ID`, `CLOUDRU_API_KEY`  
 > **Required pip:** `httpx`  
 > **Install only if** this EvoClaw has OAuth connection for `yandex-mail` in Cloud.ru console.
-
 
 ## What this skill does
 
@@ -78,7 +66,6 @@ Flags: `--method`, `--json`, `--body-file`, `--query`, `--header`, `--timeout`, 
 ## Notes
 
 HTTP proxy does not speak IMAP. Use token with XOAUTH2 on imap.yandex.com / smtp.yandex.com.
-
 
 ## References
 

@@ -11,7 +11,7 @@
 ### Platform probe
 
 ```bash
-python3 scripts/nango_proxy.py call yandex-delivery api/b2b/platform/offers/create --method POST --json '{}' --json-output
+python3 {baseDir}/scripts/nango_proxy.py call yandex-delivery api/b2b/platform/offers/create --method POST --json '{}' --json-output
 ```
 
 ## Notes

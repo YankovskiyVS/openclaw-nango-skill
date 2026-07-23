@@ -1,23 +1,12 @@
 ---
 name: bitrix24-tasks
-description: Call Bitrix24 Tasks / Projects REST via Nango proxy
-timeout_sec: 300
-required_pip:
-  - httpx
-required_env:
-  - NANGO_PROXY_URL
-  - EVOLUTION_PROJECT_ID
-  - EVOCLAW_ID
-  - CLOUDRU_API_KEY
+description: "Call Bitrix24 Tasks / Projects REST via Nango proxy"
 allowed-tools: Fetch HTTP
 metadata:
   openclaw:
     requires:
-      env:
-        - NANGO_PROXY_URL
-        - EVOLUTION_PROJECT_ID
-        - EVOCLAW_ID
-        - CLOUDRU_API_KEY
+      env: [NANGO_PROXY_URL, EVOLUTION_PROJECT_ID, EVOCLAW_ID, CLOUDRU_API_KEY]
+      bins: [python3]
     primaryEnv: CLOUDRU_API_KEY
   nango:
     family: bitrix24
@@ -28,14 +17,13 @@ metadata:
 > **Required pip:** `httpx`  
 > **Install only if** this EvoClaw has OAuth connection for `bitrix24-tasks` in Cloud.ru console.
 
-
 ## What this skill does
 
 **Bitrix24 Tasks** — authenticated HTTP via **ai-assistant-nango-proxy** → Nango → provider API.
 
 - Nango `provider_config_key`: **`bitrix24-tasks`**
 - Scopes / access: `task, tasks_extended, sonet_group`
-- Upstream base (via Nango): `https://{{domain}}/rest`
+- Upstream base (via Nango): `https://{domain}/rest`
 
 OpenClaw never sees OAuth tokens or the Nango secret.
 
@@ -74,8 +62,6 @@ Flags: `--method`, `--json`, `--body-file`, `--query`, `--header`, `--timeout`, 
 4. On **404** — wrong `EVOCLAW_ID`.
 5. On upstream **4xx/5xx** — missing/expired OAuth → ask user to reconnect **bitrix24-tasks** in console.
 6. Never log `CLOUDRU_API_KEY` or tokens.
-
-
 
 ## References
 

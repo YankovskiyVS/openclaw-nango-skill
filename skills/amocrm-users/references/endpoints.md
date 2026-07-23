@@ -11,5 +11,5 @@
 ### Users
 
 ```bash
-python3 scripts/nango_proxy.py call amocrm-users api/v4/users --json-output
+python3 {baseDir}/scripts/nango_proxy.py call amocrm-users api/v4/users --json-output
 ```

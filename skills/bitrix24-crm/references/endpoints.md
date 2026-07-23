@@ -11,13 +11,13 @@
 ### List leads
 
 ```bash
-python3 scripts/nango_proxy.py call bitrix24-crm crm.lead.list --json-output
+python3 {baseDir}/scripts/nango_proxy.py call bitrix24-crm crm.lead.list --json-output
 ```
 
 ### List deals
 
 ```bash
-python3 scripts/nango_proxy.py call bitrix24-crm crm.deal.list --json-output
+python3 {baseDir}/scripts/nango_proxy.py call bitrix24-crm crm.deal.list --json-output
 ```
 
 ## Notes

@@ -1,23 +1,12 @@
 ---
 name: yandex-delivery
-description: Call Yandex Delivery Partner API via Nango proxy after OAuth connect
-timeout_sec: 300
-required_pip:
-  - httpx
-required_env:
-  - NANGO_PROXY_URL
-  - EVOLUTION_PROJECT_ID
-  - EVOCLAW_ID
-  - CLOUDRU_API_KEY
+description: "Call Yandex Delivery Partner API via Nango proxy after OAuth connect"
 allowed-tools: Fetch HTTP
 metadata:
   openclaw:
     requires:
-      env:
-        - NANGO_PROXY_URL
-        - EVOLUTION_PROJECT_ID
-        - EVOCLAW_ID
-        - CLOUDRU_API_KEY
+      env: [NANGO_PROXY_URL, EVOLUTION_PROJECT_ID, EVOCLAW_ID, CLOUDRU_API_KEY]
+      bins: [python3]
     primaryEnv: CLOUDRU_API_KEY
   nango:
     family: yandex
@@ -27,7 +16,6 @@ metadata:
 > **Required env:** `NANGO_PROXY_URL`, `EVOLUTION_PROJECT_ID`, `EVOCLAW_ID`, `CLOUDRU_API_KEY`  
 > **Required pip:** `httpx`  
 > **Install only if** this EvoClaw has OAuth connection for `yandex-delivery` in Cloud.ru console.
-
 
 ## What this skill does
 
@@ -61,7 +49,7 @@ project-{EVOLUTION_PROJECT_ID}-evoclaw-{EVOCLAW_ID}
 
 ```bash
 # Platform probe
-python3 {baseDir}/scripts/nango_proxy.py call yandex-delivery api/b2b/platform/offers/create --method POST --json '{{}}' --json-output
+python3 {baseDir}/scripts/nango_proxy.py call yandex-delivery api/b2b/platform/offers/create --method POST --json '{}' --json-output
 ```
 
 Flags: `--method`, `--json`, `--body-file`, `--query`, `--header`, `--timeout`, `--project-id`, `--evoclaw-id`, `--api-key`, `--proxy-url`, `--json-output`.
@@ -78,7 +66,6 @@ Flags: `--method`, `--json`, `--body-file`, `--query`, `--header`, `--timeout`, 
 ## Notes
 
 Upstream auth header is Bearer (set by Nango provider template).
-
 
 ## References
 

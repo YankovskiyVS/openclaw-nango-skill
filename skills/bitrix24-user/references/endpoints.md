@@ -11,11 +11,11 @@
 ### Current user
 
 ```bash
-python3 scripts/nango_proxy.py call bitrix24-user user.current --json-output
+python3 {baseDir}/scripts/nango_proxy.py call bitrix24-user user.current --json-output
 ```
 
 ### Departments
 
 ```bash
-python3 scripts/nango_proxy.py call bitrix24-user department.get --json-output
+python3 {baseDir}/scripts/nango_proxy.py call bitrix24-user department.get --json-output
 ```

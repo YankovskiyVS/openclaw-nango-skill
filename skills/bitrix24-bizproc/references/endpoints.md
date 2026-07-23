@@ -11,5 +11,5 @@
 ### Workflow templates
 
 ```bash
-python3 scripts/nango_proxy.py call bitrix24-bizproc bizproc.workflow.template.list --json-output
+python3 {baseDir}/scripts/nango_proxy.py call bitrix24-bizproc bizproc.workflow.template.list --json-output
 ```

@@ -11,7 +11,7 @@
 ### Account
 
 ```bash
-python3 scripts/nango_proxy.py call amocrm api/v4/account --json-output
+python3 {baseDir}/scripts/nango_proxy.py call amocrm api/v4/account --json-output
 ```
 
 ## Notes

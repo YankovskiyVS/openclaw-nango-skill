@@ -11,7 +11,7 @@
 ### Resolve mailbox email
 
 ```bash
-python3 scripts/nango_proxy.py call yandex-mail info --query 'format=json' --json-output
+python3 {baseDir}/scripts/nango_proxy.py call yandex-mail info --query 'format=json' --json-output
 ```
 
 ## Notes

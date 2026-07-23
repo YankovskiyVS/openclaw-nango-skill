@@ -11,5 +11,5 @@
 ### Catalogs
 
 ```bash
-python3 scripts/nango_proxy.py call amocrm-catalog api/v4/catalogs --json-output
+python3 {baseDir}/scripts/nango_proxy.py call amocrm-catalog api/v4/catalogs --json-output
 ```

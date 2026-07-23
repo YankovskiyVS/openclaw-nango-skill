@@ -11,5 +11,5 @@
 ### Tasks
 
 ```bash
-python3 scripts/nango_proxy.py call amocrm-tasks api/v4/tasks --json-output
+python3 {baseDir}/scripts/nango_proxy.py call amocrm-tasks api/v4/tasks --json-output
 ```

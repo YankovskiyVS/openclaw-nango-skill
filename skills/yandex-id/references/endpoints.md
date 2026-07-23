@@ -11,13 +11,13 @@
 ### GET profile
 
 ```bash
-python3 scripts/nango_proxy.py call yandex-id info --query 'format=json' --json-output
+python3 {baseDir}/scripts/nango_proxy.py call yandex-id info --query 'format=json' --json-output
 ```
 
 ### legacy key
 
 ```bash
-python3 scripts/nango_proxy.py call yandex info --query 'format=json' --json-output
+python3 {baseDir}/scripts/nango_proxy.py call yandex info --query 'format=json' --json-output
 ```
 
 ## Notes

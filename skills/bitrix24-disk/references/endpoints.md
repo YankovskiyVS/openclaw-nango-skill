@@ -11,5 +11,5 @@
 ### Storage list
 
 ```bash
-python3 scripts/nango_proxy.py call bitrix24-disk disk.storage.getlist --json-output
+python3 {baseDir}/scripts/nango_proxy.py call bitrix24-disk disk.storage.getlist --json-output
 ```

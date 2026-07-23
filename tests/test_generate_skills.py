@@ -1,0 +1,398 @@
+import json
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+GENERATOR = ROOT / "scripts" / "generate_skills.py"
+CATALOG_SOURCE = ROOT / "catalog" / "skills.json"
+
+EXPECTED_SKILLS = (
+    "yandex-id",
+    "yandex-disk",
+    "yandex-mail",
+    "yandex-calendar",
+    "yandex-direct",
+    "yandex-maps",
+    "yandex-market",
+    "yandex-delivery",
+    "bitrix24",
+    "bitrix24-crm",
+    "bitrix24-tasks",
+    "bitrix24-disk",
+    "bitrix24-im",
+    "bitrix24-user",
+    "bitrix24-calendar",
+    "bitrix24-bizproc",
+    "bitrix24-telephony",
+    "amocrm",
+    "amocrm-crm",
+    "amocrm-catalog",
+    "amocrm-chats",
+    "amocrm-telephony",
+    "amocrm-tasks",
+    "amocrm-events",
+    "amocrm-users",
+)
+
+EXPECTED_OPERATIONS = {
+    "yandex-id": (
+        "call yandex-id info --query 'format=json' --json-output",
+        "call yandex info --query 'format=json' --json-output",
+    ),
+    "yandex-disk": (
+        "call yandex-disk v1/disk --json-output",
+        "call yandex-disk 'v1/disk/resources' --query 'path=/' --json-output",
+    ),
+    "yandex-mail": (
+        "call yandex-mail info --query 'format=json' --json-output",
+    ),
+    "yandex-calendar": (
+        "call yandex-calendar calendars/ --json-output",
+    ),
+    "yandex-direct": (
+        "call yandex-direct json/v5/campaigns --method POST --json "
+        """'{"method":"get","params":{"SelectionCriteria":{},"FieldNames":["Id","Name"]}}' """
+        "--json-output",
+    ),
+    "yandex-maps": ("call yandex-maps v1/ --json-output",),
+    "yandex-market": ("call yandex-market v2/campaigns --json-output",),
+    "yandex-delivery": (
+        "call yandex-delivery api/b2b/platform/offers/create --method POST "
+        "--json '{}' --json-output",
+    ),
+    "bitrix24": ("call bitrix24 user.current --json-output",),
+    "bitrix24-crm": (
+        "call bitrix24-crm crm.lead.list --json-output",
+        "call bitrix24-crm crm.deal.list --json-output",
+    ),
+    "bitrix24-tasks": (
+        "call bitrix24-tasks tasks.task.list --json-output",
+    ),
+    "bitrix24-disk": (
+        "call bitrix24-disk disk.storage.getlist --json-output",
+    ),
+    "bitrix24-im": ("call bitrix24-im im.recent.get --json-output",),
+    "bitrix24-user": (
+        "call bitrix24-user user.current --json-output",
+        "call bitrix24-user department.get --json-output",
+    ),
+    "bitrix24-calendar": (
+        "call bitrix24-calendar calendar.section.get --json-output",
+    ),
+    "bitrix24-bizproc": (
+        "call bitrix24-bizproc bizproc.workflow.template.list --json-output",
+    ),
+    "bitrix24-telephony": (
+        "call bitrix24-telephony telephony.externalLine.get --json-output",
+    ),
+    "amocrm": ("call amocrm api/v4/account --json-output",),
+    "amocrm-crm": (
+        "call amocrm-crm api/v4/leads --json-output",
+        "call amocrm-crm api/v4/contacts --json-output",
+    ),
+    "amocrm-catalog": (
+        "call amocrm-catalog api/v4/catalogs --json-output",
+    ),
+    "amocrm-chats": ("call amocrm-chats api/v4/talks --json-output",),
+    "amocrm-telephony": (
+        "call amocrm-telephony api/v4/events "
+        "--query 'filter[type]=incoming_call' --json-output",
+    ),
+    "amocrm-tasks": ("call amocrm-tasks api/v4/tasks --json-output",),
+    "amocrm-events": ("call amocrm-events api/v4/events --json-output",),
+    "amocrm-users": ("call amocrm-users api/v4/users --json-output",),
+}
+
+SUPPORTED_FRONTMATTER = {"name", "description", "allowed-tools", "metadata"}
+GENERATED_PACKAGE_FILES = {
+    "SKILL.md",
+    "references/api-reference.md",
+    "references/endpoints.md",
+    "scripts/nango_proxy.py",
+}
+JSON_ARGUMENT = re.compile(r"--json '([^']*)'")
+
+
+def _frontmatter_keys(text):
+    parts = text.split("---", 2)
+    assert len(parts) == 3, "SKILL.md must start with YAML frontmatter"
+    return {
+        line.split(":", 1)[0]
+        for line in parts[1].splitlines()
+        if line and not line[0].isspace() and ":" in line
+    }
+
+
+def _invalid_json_arguments(path):
+    invalid = []
+    for match in JSON_ARGUMENT.finditer(path.read_text(encoding="utf-8")):
+        payload = match.group(1)
+        try:
+            json.loads(payload)
+        except json.JSONDecodeError as exc:
+            invalid.append((payload, str(exc)))
+    return invalid
+
+
+def _make_repository(tmp_path, seed_skills=False):
+    root = tmp_path / "repository"
+    (root / "scripts").mkdir(parents=True)
+    shutil.copy2(GENERATOR, root / "scripts" / "generate_skills.py")
+    shutil.copytree(ROOT / "_shared", root / "_shared")
+    if CATALOG_SOURCE.is_file():
+        (root / "catalog").mkdir()
+        shutil.copy2(CATALOG_SOURCE, root / "catalog" / "skills.json")
+    if seed_skills:
+        shutil.copytree(ROOT / "skills", root / "skills")
+        shutil.copy2(ROOT / "CATALOG.md", root / "CATALOG.md")
+    return root
+
+
+def _run_generator(root, *arguments):
+    return subprocess.run(
+        [sys.executable, str(root / "scripts" / "generate_skills.py"), *arguments],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def _snapshot(root, include_metadata):
+    snapshot = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        stat = path.lstat()
+        if path.is_symlink():
+            value = ("symlink", path.readlink().as_posix())
+        elif path.is_dir():
+            value = ("directory",)
+        else:
+            value = ("file", path.read_bytes())
+        if include_metadata:
+            value += (stat.st_mode, stat.st_mtime_ns)
+        snapshot[relative] = value
+    return snapshot
+
+
+def test_catalog_is_the_ordered_source_for_all_existing_capabilities():
+    assert CATALOG_SOURCE.is_file(), "catalog/skills.json is missing"
+    document = json.loads(CATALOG_SOURCE.read_text(encoding="utf-8"))
+
+    assert document["schema_version"] == 1
+    entries = document["skills"]
+    assert tuple(entry["id"] for entry in entries) == EXPECTED_SKILLS
+    assert tuple(entry["provider_config_key"] for entry in entries) == EXPECTED_SKILLS
+    assert len({entry["id"] for entry in entries}) == 25
+    assert len({entry["provider_config_key"] for entry in entries}) == 25
+
+    aliases = {
+        entry["id"]: entry.get("aliases", [])
+        for entry in entries
+        if entry.get("aliases")
+    }
+    assert aliases == {"yandex-id": ["yandex"]}
+
+    actual_operations = {
+        entry["id"]: tuple(operation["command"] for operation in entry["operations"])
+        for entry in entries
+    }
+    assert actual_operations == EXPECTED_OPERATIONS
+
+    for entry in entries:
+        allowed_providers = {entry["provider_config_key"], *entry.get("aliases", [])}
+        for operation in entry["operations"]:
+            command = shlex.split(operation["command"])
+            assert command[0] == "call"
+            assert command[1] in allowed_providers
+
+
+def test_all_25_skill_frontmatters_use_only_supported_fields_and_dependencies():
+    skill_dirs = sorted(path.name for path in (ROOT / "skills").iterdir() if path.is_dir())
+    assert set(skill_dirs) == set(EXPECTED_SKILLS)
+
+    unsupported = {}
+    missing_requirements = []
+    for skill_id in skill_dirs:
+        text = (ROOT / "skills" / skill_id / "SKILL.md").read_text(encoding="utf-8")
+        keys = _frontmatter_keys(text)
+        if keys != SUPPORTED_FRONTMATTER:
+            unsupported[skill_id] = sorted(keys - SUPPORTED_FRONTMATTER)
+        if "env: [NANGO_PROXY_URL, EVOLUTION_PROJECT_ID, EVOCLAW_ID, CLOUDRU_API_KEY]" not in text:
+            missing_requirements.append((skill_id, "env"))
+        if "bins: [python3]" not in text:
+            missing_requirements.append((skill_id, "bins"))
+
+    assert unsupported == {}
+    assert missing_requirements == []
+
+
+def test_generated_json_examples_are_literal_valid_json():
+    invalid = {}
+    for path in sorted((ROOT / "skills").glob("*/**/*.md")):
+        failures = _invalid_json_arguments(path)
+        if failures:
+            invalid[path.relative_to(ROOT).as_posix()] = failures
+    assert invalid == {}
+
+
+def test_endpoint_commands_are_basedir_relative_and_references_resolve():
+    bad_commands = []
+    missing_references = []
+    for skill_id in EXPECTED_SKILLS:
+        skill_dir = ROOT / "skills" / skill_id
+        endpoints = skill_dir / "references" / "endpoints.md"
+        for line in endpoints.read_text(encoding="utf-8").splitlines():
+            if line.startswith("python3 ") and not line.startswith(
+                "python3 {baseDir}/scripts/nango_proxy.py "
+            ):
+                bad_commands.append((skill_id, line))
+
+        skill_text = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        for relative in re.findall(r"`\{baseDir\}/([^`]+)`", skill_text):
+            if not (skill_dir / relative).is_file():
+                missing_references.append((skill_id, relative))
+
+    assert bad_commands == []
+    assert missing_references == []
+
+
+def test_all_packages_contain_the_canonical_shared_proxy_byte_for_byte():
+    canonical = (ROOT / "_shared" / "scripts" / "nango_proxy.py").read_bytes()
+    stale = []
+    for skill_id in EXPECTED_SKILLS:
+        packaged = ROOT / "skills" / skill_id / "scripts" / "nango_proxy.py"
+        if packaged.read_bytes() != canonical:
+            stale.append(skill_id)
+    assert stale == []
+
+
+def test_check_mode_is_read_only_and_reports_missing_extra_and_stale(tmp_path):
+    root = _make_repository(tmp_path, seed_skills=True)
+    stale = root / "skills" / "yandex-id" / "SKILL.md"
+    stale.write_text(stale.read_text(encoding="utf-8") + "\nstale\n", encoding="utf-8")
+    (root / "skills" / "yandex-disk" / "SKILL.md").unlink()
+    extra = root / "skills" / "local-unmanaged"
+    extra.mkdir()
+    (extra / "keep.txt").write_text("keep\n", encoding="utf-8")
+    before = _snapshot(root, include_metadata=True)
+
+    result = _run_generator(root, "--check")
+
+    assert _snapshot(root, include_metadata=True) == before
+    assert result.returncode == 1
+    output = result.stdout + result.stderr
+    assert "missing: skills/yandex-disk/SKILL.md" in output
+    assert "stale: skills/yandex-id/SKILL.md" in output
+    assert "extra: skills/local-unmanaged" in output
+
+
+def test_normal_generation_preserves_unrelated_files_and_directories(tmp_path):
+    root = _make_repository(tmp_path, seed_skills=True)
+    local_dir = root / "skills" / "local-unmanaged"
+    local_dir.mkdir()
+    local_file = local_dir / "keep.txt"
+    local_file.write_text("keep\n", encoding="utf-8")
+    package_note = root / "skills" / "yandex-id" / "operator-note.md"
+    package_note.write_text("keep this too\n", encoding="utf-8")
+
+    result = _run_generator(root)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert local_file.read_text(encoding="utf-8") == "keep\n"
+    assert package_note.read_text(encoding="utf-8") == "keep this too\n"
+
+
+def test_normal_generation_refuses_symlinked_managed_directories(tmp_path):
+    root = _make_repository(tmp_path)
+    external = tmp_path / "external"
+    external.mkdir()
+    marker = external / "keep.txt"
+    marker.write_text("outside\n", encoding="utf-8")
+    (root / "skills").mkdir()
+    (root / "skills" / "yandex-id").symlink_to(
+        external, target_is_directory=True
+    )
+    before = _snapshot(root, include_metadata=True)
+
+    result = _run_generator(root)
+
+    assert result.returncode == 2
+    assert _snapshot(root, include_metadata=True) == before
+    assert sorted(path.name for path in external.iterdir()) == ["keep.txt"]
+    assert marker.read_text(encoding="utf-8") == "outside\n"
+    assert "refusing symlinked generated path" in result.stderr
+
+
+def test_catalog_ids_cannot_escape_the_exact_skill_allowlist(tmp_path):
+    root = _make_repository(tmp_path)
+    document = json.loads(
+        (root / "catalog" / "skills.json").read_text(encoding="utf-8")
+    )
+    escaped = document["skills"][1]
+    escaped["id"] = "../../escaped-package"
+    escaped["name"] = "../../escaped-package"
+    escaped["provider_config_key"] = "../../escaped-package"
+    for operation in escaped["operations"]:
+        operation["command"] = operation["command"].replace(
+            "call yandex-disk", "call ../../escaped-package", 1
+        )
+    (root / "catalog" / "skills.json").write_text(
+        json.dumps(document), encoding="utf-8"
+    )
+    outside = tmp_path / "escaped-package"
+
+    result = _run_generator(root)
+
+    assert result.returncode == 2
+    assert not outside.exists()
+    assert "exact ordered skill ids" in result.stderr
+
+
+def test_check_detects_generated_file_mode_drift_without_writing(tmp_path):
+    root = _make_repository(tmp_path)
+    generated = _run_generator(root)
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+    proxy = root / "skills" / "yandex-id" / "scripts" / "nango_proxy.py"
+    proxy.chmod(0o644)
+    before = _snapshot(root, include_metadata=True)
+
+    result = _run_generator(root, "--check")
+
+    assert _snapshot(root, include_metadata=True) == before
+    assert result.returncode == 1
+    assert "stale: skills/yandex-id/scripts/nango_proxy.py" in (
+        result.stdout + result.stderr
+    )
+
+
+def test_two_generations_are_byte_stable_and_never_double_braces(tmp_path):
+    root = _make_repository(tmp_path)
+
+    first = _run_generator(root)
+    assert first.returncode == 0, first.stdout + first.stderr
+    first_snapshot = _snapshot(root, include_metadata=False)
+
+    second = _run_generator(root)
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert _snapshot(root, include_metadata=False) == first_snapshot
+
+    invalid = {}
+    for path in sorted((root / "skills").glob("*/**/*.md")):
+        failures = _invalid_json_arguments(path)
+        if failures:
+            invalid[path.relative_to(root).as_posix()] = failures
+    assert invalid == {}
+
+    for skill_id in EXPECTED_SKILLS:
+        package_files = {
+            path.relative_to(root / "skills" / skill_id).as_posix()
+            for path in (root / "skills" / skill_id).rglob("*")
+            if path.is_file()
+        }
+        assert package_files == GENERATED_PACKAGE_FILES

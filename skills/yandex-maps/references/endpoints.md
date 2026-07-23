@@ -11,7 +11,7 @@
 ### After OAuth, call Maps endpoints as documented for bookmarks API
 
 ```bash
-python3 scripts/nango_proxy.py call yandex-maps v1/ --json-output
+python3 {baseDir}/scripts/nango_proxy.py call yandex-maps v1/ --json-output
 ```
 
 ## Notes

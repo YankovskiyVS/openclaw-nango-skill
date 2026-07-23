@@ -1,23 +1,12 @@
 ---
 name: yandex-id
-description: Call Yandex ID (login.info/email/avatar) via Nango proxy after OAuth connect
-timeout_sec: 300
-required_pip:
-  - httpx
-required_env:
-  - NANGO_PROXY_URL
-  - EVOLUTION_PROJECT_ID
-  - EVOCLAW_ID
-  - CLOUDRU_API_KEY
+description: "Call Yandex ID (login.info/email/avatar) via Nango proxy after OAuth connect"
 allowed-tools: Fetch HTTP
 metadata:
   openclaw:
     requires:
-      env:
-        - NANGO_PROXY_URL
-        - EVOLUTION_PROJECT_ID
-        - EVOCLAW_ID
-        - CLOUDRU_API_KEY
+      env: [NANGO_PROXY_URL, EVOLUTION_PROJECT_ID, EVOCLAW_ID, CLOUDRU_API_KEY]
+      bins: [python3]
     primaryEnv: CLOUDRU_API_KEY
   nango:
     family: yandex
@@ -27,7 +16,6 @@ metadata:
 > **Required env:** `NANGO_PROXY_URL`, `EVOLUTION_PROJECT_ID`, `EVOCLAW_ID`, `CLOUDRU_API_KEY`  
 > **Required pip:** `httpx`  
 > **Install only if** this EvoClaw has OAuth connection for `yandex-id` in Cloud.ru console.
-
 
 ## What this skill does
 
@@ -81,7 +69,6 @@ Flags: `--method`, `--json`, `--body-file`, `--query`, `--header`, `--timeout`, 
 ## Notes
 
 Legacy Nango unique key `yandex` still works if that is what was connected.
-
 
 ## References
 

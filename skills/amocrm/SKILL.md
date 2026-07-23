@@ -1,23 +1,12 @@
 ---
 name: amocrm
-description: Call amoCRM REST via Nango proxy after OAuth connect
-timeout_sec: 300
-required_pip:
-  - httpx
-required_env:
-  - NANGO_PROXY_URL
-  - EVOLUTION_PROJECT_ID
-  - EVOCLAW_ID
-  - CLOUDRU_API_KEY
+description: "Call amoCRM REST via Nango proxy after OAuth connect"
 allowed-tools: Fetch HTTP
 metadata:
   openclaw:
     requires:
-      env:
-        - NANGO_PROXY_URL
-        - EVOLUTION_PROJECT_ID
-        - EVOCLAW_ID
-        - CLOUDRU_API_KEY
+      env: [NANGO_PROXY_URL, EVOLUTION_PROJECT_ID, EVOCLAW_ID, CLOUDRU_API_KEY]
+      bins: [python3]
     primaryEnv: CLOUDRU_API_KEY
   nango:
     family: amocrm
@@ -28,14 +17,13 @@ metadata:
 > **Required pip:** `httpx`  
 > **Install only if** this EvoClaw has OAuth connection for `amocrm` in Cloud.ru console.
 
-
 ## What this skill does
 
 **amoCRM** — authenticated HTTP via **ai-assistant-nango-proxy** → Nango → provider API.
 
 - Nango `provider_config_key`: **`amocrm`**
 - Scopes / access: `account data (coarse OAuth scopes in amoМаркет)`
-- Upstream base (via Nango): `https://{{subdomain}}.amocrm.ru`
+- Upstream base (via Nango): `https://{subdomain}.amocrm.ru`
 
 OpenClaw never sees OAuth tokens or the Nango secret.
 
@@ -78,7 +66,6 @@ Flags: `--method`, `--json`, `--body-file`, `--query`, `--header`, `--timeout`, 
 ## Notes
 
 amoCRM OAuth scopes are coarse; module skills are separate apps for UX/isolation.
-
 
 ## References
 

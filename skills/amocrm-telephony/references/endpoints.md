@@ -11,5 +11,5 @@
 ### Events notes
 
 ```bash
-python3 scripts/nango_proxy.py call amocrm-telephony api/v4/events --query 'filter[type]=incoming_call' --json-output
+python3 {baseDir}/scripts/nango_proxy.py call amocrm-telephony api/v4/events --query 'filter[type]=incoming_call' --json-output
 ```

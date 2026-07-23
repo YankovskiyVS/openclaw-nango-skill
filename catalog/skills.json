@@ -1,0 +1,478 @@
+{
+  "schema_version": 1,
+  "skills": [
+    {
+      "id": "yandex-id",
+      "name": "yandex-id",
+      "title": "Yandex ID",
+      "family": "yandex",
+      "provider_config_key": "yandex-id",
+      "aliases": [
+        "yandex"
+      ],
+      "description": "Call Yandex ID (login.info/email/avatar) via Nango proxy after OAuth connect",
+      "when": "User asks about Yandex profile, login, email, avatar, or account identity.",
+      "scopes": "login:info, login:email, login:avatar",
+      "base": "https://login.yandex.ru",
+      "notes": "Legacy Nango unique key `yandex` still works if that is what was connected.",
+      "operations": [
+        {
+          "title": "GET profile",
+          "command": "call yandex-id info --query 'format=json' --json-output"
+        },
+        {
+          "title": "legacy key",
+          "command": "call yandex info --query 'format=json' --json-output"
+        }
+      ]
+    },
+    {
+      "id": "yandex-disk",
+      "name": "yandex-disk",
+      "title": "Yandex Disk",
+      "family": "yandex",
+      "provider_config_key": "yandex-disk",
+      "description": "Call Yandex Disk REST API via Nango proxy after OAuth connect",
+      "when": "User asks to list/upload/download files on Yandex Disk.",
+      "scopes": "cloud_api:disk.read, cloud_api:disk.write, cloud_api:disk.info, cloud_api:disk.app_folder",
+      "base": "https://cloud-api.yandex.net",
+      "notes": "Docs: https://yandex.com/dev/disk/api/concepts/about.html",
+      "operations": [
+        {
+          "title": "Disk meta",
+          "command": "call yandex-disk v1/disk --json-output"
+        },
+        {
+          "title": "List root",
+          "command": "call yandex-disk 'v1/disk/resources' --query 'path=/' --json-output"
+        }
+      ]
+    },
+    {
+      "id": "yandex-mail",
+      "name": "yandex-mail",
+      "title": "Yandex Mail",
+      "family": "yandex",
+      "provider_config_key": "yandex-mail",
+      "description": "Use Yandex Mail OAuth token (IMAP/SMTP XOAUTH2) obtained via Nango",
+      "when": "User asks to read or send Yandex Mail.",
+      "scopes": "mail:imap_full, mail:smtp, login:email",
+      "base": "https://login.yandex.ru (identity); mail via IMAP/SMTP",
+      "notes": "HTTP proxy does not speak IMAP. Use token with XOAUTH2 on imap.yandex.com / smtp.yandex.com.",
+      "operations": [
+        {
+          "title": "Resolve mailbox email",
+          "command": "call yandex-mail info --query 'format=json' --json-output"
+        }
+      ]
+    },
+    {
+      "id": "yandex-calendar",
+      "name": "yandex-calendar",
+      "title": "Yandex Calendar",
+      "family": "yandex",
+      "provider_config_key": "yandex-calendar",
+      "description": "Call Yandex Calendar CalDAV API via Nango proxy after OAuth connect",
+      "when": "User asks about Yandex Calendar events, availability, or meetings.",
+      "scopes": "calendar:all",
+      "base": "https://caldav.yandex.ru",
+      "notes": "CalDAV (ICS), not Google Calendar JSON API.",
+      "operations": [
+        {
+          "title": "CalDAV root",
+          "command": "call yandex-calendar calendars/ --json-output"
+        }
+      ]
+    },
+    {
+      "id": "yandex-direct",
+      "name": "yandex-direct",
+      "title": "Yandex Direct",
+      "family": "yandex",
+      "provider_config_key": "yandex-direct",
+      "description": "Call Yandex Direct API via Nango proxy after OAuth connect",
+      "when": "User asks about Yandex Direct campaigns, ads, or reports.",
+      "scopes": "direct:api",
+      "base": "https://api.direct.yandex.com",
+      "notes": "Upstream auth header is Bearer (set by Nango provider template).",
+      "operations": [
+        {
+          "title": "JSON v5 campaigns",
+          "command": "call yandex-direct json/v5/campaigns --method POST --json '{\"method\":\"get\",\"params\":{\"SelectionCriteria\":{},\"FieldNames\":[\"Id\",\"Name\"]}}' --json-output"
+        }
+      ]
+    },
+    {
+      "id": "yandex-maps",
+      "name": "yandex-maps",
+      "title": "Yandex Maps",
+      "family": "yandex",
+      "provider_config_key": "yandex-maps",
+      "description": "Call Yandex Maps (bookmarks scope) via Nango proxy after OAuth connect",
+      "when": "User asks about Yandex Maps bookmarks / saved places (msps:public_bookmarks).",
+      "scopes": "msps:public_bookmarks",
+      "base": "https://api-maps.yandex.ru",
+      "notes": "Exact bookmark REST paths depend on Maps product API; keep OAuth connection scoped to bookmarks.",
+      "operations": [
+        {
+          "title": "After OAuth, call Maps endpoints as documented for bookmarks API",
+          "command": "call yandex-maps v1/ --json-output"
+        }
+      ]
+    },
+    {
+      "id": "yandex-market",
+      "name": "yandex-market",
+      "title": "Yandex Market Partner",
+      "family": "yandex",
+      "provider_config_key": "yandex-market",
+      "description": "Call Yandex Market Partner API via Nango proxy after OAuth connect",
+      "when": "User asks about Market partner campaigns, offers, or partner cabinet data.",
+      "scopes": "market:partner-api",
+      "base": "https://api.partner.market.yandex.ru",
+      "notes": "Market prefers Api-Key for new apps; OAuth still works for transitional setups.",
+      "operations": [
+        {
+          "title": "Campaigns v2",
+          "command": "call yandex-market v2/campaigns --json-output"
+        }
+      ]
+    },
+    {
+      "id": "yandex-delivery",
+      "name": "yandex-delivery",
+      "title": "Yandex Delivery Partner",
+      "family": "yandex",
+      "provider_config_key": "yandex-delivery",
+      "description": "Call Yandex Delivery Partner API via Nango proxy after OAuth connect",
+      "when": "User asks about Yandex Delivery offers, claims, or partner logistics API.",
+      "scopes": "delivery:partner-api",
+      "base": "https://b2b.taxi.yandex.net",
+      "notes": "Upstream auth header is Bearer (set by Nango provider template).",
+      "operations": [
+        {
+          "title": "Platform probe",
+          "command": "call yandex-delivery api/b2b/platform/offers/create --method POST --json '{}' --json-output"
+        }
+      ]
+    },
+    {
+      "id": "bitrix24",
+      "name": "bitrix24",
+      "title": "Bitrix24",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24",
+      "description": "Call Bitrix24 REST (base user scope) via Nango proxy after OAuth connect",
+      "when": "User asks generic Bitrix24 requests; prefer module skills (crm/tasks/…) when available.",
+      "scopes": "user",
+      "base": "https://{domain}/rest",
+      "notes": "Connect requires Bitrix24 portal domain. Install module-specific skills when those integrations are connected.",
+      "operations": [
+        {
+          "title": "Current user",
+          "command": "call bitrix24 user.current --json-output"
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-crm",
+      "name": "bitrix24-crm",
+      "title": "Bitrix24 CRM",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-crm",
+      "description": "Call Bitrix24 CRM REST (leads, deals, contacts) via Nango proxy",
+      "when": "User asks about Bitrix24 leads, deals, contacts, companies, invoices, SPA.",
+      "scopes": "crm",
+      "base": "https://{domain}/rest",
+      "notes": "Requires OAuth connection for provider_config_key bitrix24-crm.",
+      "operations": [
+        {
+          "title": "List leads",
+          "command": "call bitrix24-crm crm.lead.list --json-output"
+        },
+        {
+          "title": "List deals",
+          "command": "call bitrix24-crm crm.deal.list --json-output"
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-tasks",
+      "name": "bitrix24-tasks",
+      "title": "Bitrix24 Tasks",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-tasks",
+      "description": "Call Bitrix24 Tasks / Projects REST via Nango proxy",
+      "when": "User asks about Bitrix24 tasks, checklists, comments, projects/groups.",
+      "scopes": "task, tasks_extended, sonet_group",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "List tasks",
+          "command": "call bitrix24-tasks tasks.task.list --json-output"
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-disk",
+      "name": "bitrix24-disk",
+      "title": "Bitrix24 Disk",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-disk",
+      "description": "Call Bitrix24 Disk REST via Nango proxy",
+      "when": "User asks about Bitrix24 Drive files, folders, public links.",
+      "scopes": "disk",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Storage list",
+          "command": "call bitrix24-disk disk.storage.getlist --json-output"
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-im",
+      "name": "bitrix24-im",
+      "title": "Bitrix24 Messenger",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-im",
+      "description": "Call Bitrix24 Messenger / chatbots / open lines via Nango proxy",
+      "when": "User asks to send Bitrix24 chat messages, manage chatbots, or open lines.",
+      "scopes": "im, imbot, imopenlines",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Recent dialogs",
+          "command": "call bitrix24-im im.recent.get --json-output"
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-user",
+      "name": "bitrix24-user",
+      "title": "Bitrix24 Users & Structure",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-user",
+      "description": "Call Bitrix24 user and company structure REST via Nango proxy",
+      "when": "User asks about Bitrix24 employees, departments, org chart.",
+      "scopes": "user, department",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Current user",
+          "command": "call bitrix24-user user.current --json-output"
+        },
+        {
+          "title": "Departments",
+          "command": "call bitrix24-user department.get --json-output"
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-calendar",
+      "name": "bitrix24-calendar",
+      "title": "Bitrix24 Calendar",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-calendar",
+      "description": "Call Bitrix24 Calendar REST via Nango proxy",
+      "when": "User asks about Bitrix24 calendar, meetings, room booking.",
+      "scopes": "calendar",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Section list",
+          "command": "call bitrix24-calendar calendar.section.get --json-output"
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-bizproc",
+      "name": "bitrix24-bizproc",
+      "title": "Bitrix24 Business Processes",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-bizproc",
+      "description": "Call Bitrix24 business processes / robots REST via Nango proxy",
+      "when": "User asks to start or inspect Bitrix24 workflows, robots, or bizproc.",
+      "scopes": "bizproc",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Workflow templates",
+          "command": "call bitrix24-bizproc bizproc.workflow.template.list --json-output"
+        }
+      ]
+    },
+    {
+      "id": "bitrix24-telephony",
+      "name": "bitrix24-telephony",
+      "title": "Bitrix24 Telephony",
+      "family": "bitrix24",
+      "provider_config_key": "bitrix24-telephony",
+      "description": "Call Bitrix24 telephony / call-tracking REST via Nango proxy",
+      "when": "User asks about Bitrix24 calls, call records, or telephony.",
+      "scopes": "telephony, call",
+      "base": "https://{domain}/rest",
+      "notes": "",
+      "operations": [
+        {
+          "title": "External lines",
+          "command": "call bitrix24-telephony telephony.externalLine.get --json-output"
+        }
+      ]
+    },
+    {
+      "id": "amocrm",
+      "name": "amocrm",
+      "title": "amoCRM",
+      "family": "amocrm",
+      "provider_config_key": "amocrm",
+      "description": "Call amoCRM REST via Nango proxy after OAuth connect",
+      "when": "User asks generic amoCRM questions; prefer module skills when installed.",
+      "scopes": "account data (coarse OAuth scopes in amoМаркет)",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "amoCRM OAuth scopes are coarse; module skills are separate apps for UX/isolation.",
+      "operations": [
+        {
+          "title": "Account",
+          "command": "call amocrm api/v4/account --json-output"
+        }
+      ]
+    },
+    {
+      "id": "amocrm-crm",
+      "name": "amocrm-crm",
+      "title": "amoCRM Deals & Pipeline",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-crm",
+      "description": "Call amoCRM deals/contacts/pipelines via Nango proxy",
+      "when": "User asks about amoCRM deals, contacts, companies, pipelines, stages.",
+      "scopes": "account data (selected in amoМаркет)",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Leads",
+          "command": "call amocrm-crm api/v4/leads --json-output"
+        },
+        {
+          "title": "Contacts",
+          "command": "call amocrm-crm api/v4/contacts --json-output"
+        }
+      ]
+    },
+    {
+      "id": "amocrm-catalog",
+      "name": "amocrm-catalog",
+      "title": "amoCRM Catalog & Purchases",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-catalog",
+      "description": "Call amoCRM catalog/products/purchases via Nango proxy",
+      "when": "User asks about amoCRM products, catalogs, purchases.",
+      "scopes": "account data",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Catalogs",
+          "command": "call amocrm-catalog api/v4/catalogs --json-output"
+        }
+      ]
+    },
+    {
+      "id": "amocrm-chats",
+      "name": "amocrm-chats",
+      "title": "amoCRM Chats",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-chats",
+      "description": "Call amoCRM chats / messaging integrations via Nango proxy",
+      "when": "User asks about amoCRM chats, messengers, inbound channels.",
+      "scopes": "account data",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Talks",
+          "command": "call amocrm-chats api/v4/talks --json-output"
+        }
+      ]
+    },
+    {
+      "id": "amocrm-telephony",
+      "name": "amocrm-telephony",
+      "title": "amoCRM Telephony",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-telephony",
+      "description": "Call amoCRM telephony / call events via Nango proxy",
+      "when": "User asks about amoCRM calls, telephony, call records.",
+      "scopes": "account data",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Events notes",
+          "command": "call amocrm-telephony api/v4/events --query 'filter[type]=incoming_call' --json-output"
+        }
+      ]
+    },
+    {
+      "id": "amocrm-tasks",
+      "name": "amocrm-tasks",
+      "title": "amoCRM Tasks & Calendar",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-tasks",
+      "description": "Call amoCRM tasks via Nango proxy",
+      "when": "User asks about amoCRM tasks, reminders, calendar-like follow-ups.",
+      "scopes": "account data",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Tasks",
+          "command": "call amocrm-tasks api/v4/tasks --json-output"
+        }
+      ]
+    },
+    {
+      "id": "amocrm-events",
+      "name": "amocrm-events",
+      "title": "amoCRM Events & Feed",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-events",
+      "description": "Call amoCRM events / activity feed via Nango proxy",
+      "when": "User asks about amoCRM activity history, notes, change feed.",
+      "scopes": "account data",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Events",
+          "command": "call amocrm-events api/v4/events --json-output"
+        }
+      ]
+    },
+    {
+      "id": "amocrm-users",
+      "name": "amocrm-users",
+      "title": "amoCRM Users & Structure",
+      "family": "amocrm",
+      "provider_config_key": "amocrm-users",
+      "description": "Call amoCRM users / account structure via Nango proxy",
+      "when": "User asks about amoCRM managers, groups, account users.",
+      "scopes": "account data",
+      "base": "https://{subdomain}.amocrm.ru",
+      "notes": "",
+      "operations": [
+        {
+          "title": "Users",
+          "command": "call amocrm-users api/v4/users --json-output"
+        }
+      ]
+    }
+  ]
+}

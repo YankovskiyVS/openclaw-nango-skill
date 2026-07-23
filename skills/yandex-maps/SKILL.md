@@ -1,23 +1,12 @@
 ---
 name: yandex-maps
-description: Call Yandex Maps (bookmarks scope) via Nango proxy after OAuth connect
-timeout_sec: 300
-required_pip:
-  - httpx
-required_env:
-  - NANGO_PROXY_URL
-  - EVOLUTION_PROJECT_ID
-  - EVOCLAW_ID
-  - CLOUDRU_API_KEY
+description: "Call Yandex Maps (bookmarks scope) via Nango proxy after OAuth connect"
 allowed-tools: Fetch HTTP
 metadata:
   openclaw:
     requires:
-      env:
-        - NANGO_PROXY_URL
-        - EVOLUTION_PROJECT_ID
-        - EVOCLAW_ID
-        - CLOUDRU_API_KEY
+      env: [NANGO_PROXY_URL, EVOLUTION_PROJECT_ID, EVOCLAW_ID, CLOUDRU_API_KEY]
+      bins: [python3]
     primaryEnv: CLOUDRU_API_KEY
   nango:
     family: yandex
@@ -27,7 +16,6 @@ metadata:
 > **Required env:** `NANGO_PROXY_URL`, `EVOLUTION_PROJECT_ID`, `EVOCLAW_ID`, `CLOUDRU_API_KEY`  
 > **Required pip:** `httpx`  
 > **Install only if** this EvoClaw has OAuth connection for `yandex-maps` in Cloud.ru console.
-
 
 ## What this skill does
 
@@ -78,7 +66,6 @@ Flags: `--method`, `--json`, `--body-file`, `--query`, `--header`, `--timeout`, 
 ## Notes
 
 Exact bookmark REST paths depend on Maps product API; keep OAuth connection scoped to bookmarks.
-
 
 ## References
 

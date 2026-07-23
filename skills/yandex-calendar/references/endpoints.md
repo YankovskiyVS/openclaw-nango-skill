@@ -11,7 +11,7 @@
 ### CalDAV root
 
 ```bash
-python3 scripts/nango_proxy.py call yandex-calendar calendars/ --json-output
+python3 {baseDir}/scripts/nango_proxy.py call yandex-calendar calendars/ --json-output
 ```
 
 ## Notes
