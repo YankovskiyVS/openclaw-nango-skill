@@ -275,6 +275,26 @@ describe("provider header validation", () => {
     );
   });
 
+  test.each(
+    [
+      "Retry-On",
+      "Forward-Headers-On-Redirect",
+      "Nango-Activity-Log-Id",
+      "Nango-Is-Sync",
+      "Nango-Is-Dry-Run",
+    ].flatMap((name) => [
+      name,
+      `Nango-Proxy-${name}`,
+      `Nango-Proxy-Nango-Proxy-${name}`,
+    ]),
+  )("rejects Nango control header %s at every passthrough depth", (name) => {
+    expectValidationCode(
+      () => validateProviderHeaders({ [name]: "header-control-sentinel" }),
+      "blocked_header",
+      "header-control-sentinel",
+    );
+  });
+
   test.each([
     [{ "Bad Name": "value" }, "invalid_header"],
     [{ "X-Test\r\nInjected": "value" }, "invalid_header"],
@@ -732,6 +752,25 @@ describe("strict runtime plugin config", () => {
     });
   });
 
+  test("accepts exact and subdomain Yandex Disk transfer hosts", () => {
+    const transferHostSuffixes = [
+      "dst.yandex.net",
+      "uploader1d.dst.yandex.net",
+      "dst.yandex.ru",
+      "downloader.dst.yandex.ru",
+    ];
+
+    const config = parseRuntimeConfig({
+      ...MINIMAL_CONFIG,
+      disk: {
+        uploadRoots: ["/srv/nango/uploads"],
+        transferHostSuffixes,
+      },
+    });
+
+    expect(config.disk?.transferHostSuffixes).toEqual(transferHostSuffixes);
+  });
+
   test.each([
     [
       { uploadRoots: ["/srv/nango/uploads"] },
@@ -749,6 +788,8 @@ describe("strict runtime plugin config", () => {
       "disk.yandex.net",
       "disk.yandex.ru",
       "storage.yandex.net",
+      "dst.yandex.net",
+      "dst.yandex.ru",
     ]);
   });
 
@@ -804,6 +845,14 @@ describe("strict runtime plugin config", () => {
         uploadRoots: ["/srv/uploads"],
         downloadRoots: ["/srv/downloads"],
         transferHostSuffixes: ["example.com"],
+      },
+      "invalid_transfer_host_suffix",
+    ],
+    [
+      {
+        uploadRoots: ["/srv/uploads"],
+        downloadRoots: ["/srv/downloads"],
+        transferHostSuffixes: ["dst.yandex.net.example.com"],
       },
       "invalid_transfer_host_suffix",
     ],

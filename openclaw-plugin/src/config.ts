@@ -23,6 +23,8 @@ const DEFAULT_TRANSFER_HOST_SUFFIXES = [
   "disk.yandex.net",
   "disk.yandex.ru",
   "storage.yandex.net",
+  "dst.yandex.net",
+  "dst.yandex.ru",
 ] as const;
 
 export const DEFAULT_RUNTIME_LIMITS = Object.freeze({
@@ -805,13 +807,8 @@ function parseTransferHostSuffixes(value: unknown): readonly string[] {
       typeof candidate !== "string" ||
       candidate.length > 253 ||
       !HOST_SUFFIX_RE.test(candidate) ||
-      !(
-        candidate === "disk.yandex.net" ||
-        candidate.endsWith(".disk.yandex.net") ||
-        candidate === "disk.yandex.ru" ||
-        candidate.endsWith(".disk.yandex.ru") ||
-        candidate === "storage.yandex.net" ||
-        candidate.endsWith(".storage.yandex.net")
+      !DEFAULT_TRANSFER_HOST_SUFFIXES.some(
+        (suffix) => candidate === suffix || candidate.endsWith(`.${suffix}`),
       )
     ) {
       fail("invalid_transfer_host_suffix");
