@@ -580,6 +580,70 @@ function boundedTarget(value: string): string {
   return `${value.slice(0, MAX_TARGET_CHARS - 1)}…`;
 }
 
+function approvalPathTemplate(facts: RequestFacts): string {
+  const amo = facts.path.match(
+    /^api\/v4\/(account|catalogs|companies|contacts|customers|events|leads|talks|tasks|users)(\/.*)?$/i,
+  );
+  if (facts.family === "amocrm" && amo) {
+    return `api/v4/${amo[1]!.toLowerCase()}${
+      amo[2] ? "/{dynamic}" : ""
+    }`;
+  }
+  if (
+    facts.providerConfigKey === "yandex-disk" &&
+    /^v1\/disk\/resources(?:\/|$)/i.test(facts.path)
+  ) {
+    return facts.path.toLowerCase() === "v1/disk/resources"
+      ? "v1/disk/resources"
+      : "v1/disk/resources/{dynamic}";
+  }
+  if (
+    facts.providerConfigKey === "yandex-market" &&
+    /^v2\/campaigns(?:\/|$)/i.test(facts.path)
+  ) {
+    return facts.path.toLowerCase() === "v2/campaigns"
+      ? "v2/campaigns"
+      : "v2/campaigns/{dynamic}";
+  }
+  if (
+    facts.providerConfigKey === "yandex-calendar" &&
+    /^calendars(?:\/|$)/i.test(facts.path)
+  ) {
+    return facts.path.toLowerCase() === "calendars"
+      ? "calendars"
+      : "calendars/{dynamic}";
+  }
+  if (
+    (facts.providerConfigKey === "yandex-id" ||
+      facts.providerConfigKey === "yandex") &&
+    facts.path.toLowerCase() === "info"
+  ) {
+    return "info";
+  }
+  if (
+    facts.providerConfigKey === "yandex-direct" &&
+    /^json\/v5\/[^/]+$/i.test(facts.path)
+  ) {
+    return "json/v5/{service}";
+  }
+  if (facts.family === "bitrix24") {
+    return "bitrix-method";
+  }
+  return "provider-endpoint";
+}
+
+function safeRequestTarget(facts: RequestFacts): string {
+  const fingerprint = createHash("sha256")
+    .update(facts.path, "utf8")
+    .digest("hex")
+    .slice(0, 12);
+  return boundedTarget(
+    `${facts.providerConfigKey}:${approvalPathTemplate(
+      facts,
+    )}:path-${fingerprint}`,
+  );
+}
+
 function requestSeverity(
   facts: RequestFacts,
   operationKind: OperationKind,
@@ -610,9 +674,7 @@ function allowedRequestClassification(
     status: "allowed",
     operationKind,
     providerConfigKey: facts.providerConfigKey,
-    target: boundedTarget(
-      `${facts.providerConfigKey}:${facts.path}`,
-    ),
+    target: safeRequestTarget(facts),
     severity: requestSeverity(facts, operationKind),
     action: `${facts.method} provider request`,
   };

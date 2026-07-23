@@ -540,6 +540,26 @@ describe("approval request contract", () => {
     expect(decision.params).toHaveProperty(APPROVAL_PROOF_PARAM);
   });
 
+  test("redacts dynamic provider path segments from the approval route", () => {
+    const controller = createApprovalController({
+      key: FIXED_KEY,
+      randomBytes: () => new Uint8Array(16).fill(3),
+    });
+    const decision = mutationDecision(
+      controller,
+      requestParams({
+        method: "PATCH",
+        path: "api/v4/leads/private-path-token-sentinel",
+      }),
+      "dynamic-path-call",
+    );
+    const description = decision.requireApproval!.description;
+
+    expect(description).toContain("api/v4/leads/{dynamic}");
+    expect(description).not.toContain("private-path-token-sentinel");
+    expect(description).toMatch(/path-[a-f0-9]{12}/);
+  });
+
   test("uses critical severity for delete, overwrite and send operations", () => {
     const controller = createApprovalController({ key: FIXED_KEY });
 
