@@ -769,6 +769,35 @@ function linkItems(
   return [];
 }
 
+function amoBodyNextTarget(
+  request: ProxyRequest,
+  body: JsonValue,
+): string | undefined {
+  if (
+    getProviderCatalogEntry(request.providerConfigKey).family !==
+    "amocrm"
+  ) {
+    return undefined;
+  }
+  const object = jsonObject(body);
+  if (object._links === undefined || object._links === null) {
+    return undefined;
+  }
+  const links = jsonObject(object._links);
+  if (links.next === undefined || links.next === null) {
+    return undefined;
+  }
+  const next = jsonObject(links.next);
+  if (
+    typeof next.href !== "string" ||
+    next.href.length === 0 ||
+    CONTROL_RE.test(next.href)
+  ) {
+    throw new PaginationError("invalid_pagination_link");
+  }
+  return next.href;
+}
+
 function replaceQueryParameter(
   query: readonly QueryPair[] | undefined,
   name: string,
@@ -1046,19 +1075,36 @@ function extractPage(
     return { items: singleItems(request, result.response.body) };
   }
   if (mode === "link") {
-    const target = nextLinkTarget(result.response.headers.link);
+    const headerTarget = nextLinkTarget(
+      result.response.headers.link,
+    );
+    const bodyTarget = amoBodyNextTarget(
+      request,
+      result.response.body,
+    );
+    const targets = [headerTarget, bodyTarget].filter(
+      (target): target is string => target !== undefined,
+    );
+    const nextRequests = targets.map((target) =>
+      linkTargetRequest(
+        request,
+        target,
+        config,
+        originalPath,
+      )
+    );
+    if (
+      nextRequests.length > 1 &&
+      requestFingerprint(nextRequests[0]!) !==
+        requestFingerprint(nextRequests[1]!)
+    ) {
+      throw new PaginationError("ambiguous_pagination_link");
+    }
     return {
       items: linkItems(request, result.response.body),
-      ...(target === undefined
+      ...(nextRequests[0] === undefined
         ? {}
-        : {
-            next: linkTargetRequest(
-              request,
-              target,
-              config,
-              originalPath,
-            ),
-          }),
+        : { next: nextRequests[0] }),
     };
   }
   if (bitrixOffsetContract(request)) {

@@ -164,6 +164,127 @@ describe("nango_proxy_paginate public contract", () => {
     });
   });
 
+  test("follows the real amoCRM _links.next.href response contract", async () => {
+    const { client, requests } = sequenceClient((request, index) =>
+      success(
+        request,
+        index === 0
+          ? {
+              _embedded: { leads: [{ id: 1 }] },
+              _links: {
+                self: {
+                  href: "https://tenant.amocrm.ru/api/v4/leads?page=1",
+                },
+                next: {
+                  href: "https://tenant.amocrm.ru/api/v4/leads?page=2",
+                },
+              },
+            }
+          : {
+              _embedded: { leads: [{ id: 2 }] },
+              _links: {
+                self: {
+                  href: "https://tenant.amocrm.ru/api/v4/leads?page=2",
+                },
+              },
+            },
+      ),
+    );
+    const tool = createPaginateTool({
+      config: runtimeConfig(),
+      client,
+      approvals: createApprovalController(),
+    });
+
+    const result = await tool.execute(
+      "amo-body-link",
+      paginateParams(),
+    );
+
+    expect(result.details).toMatchObject({
+      ok: true,
+      pagination: {
+        pageCount: 2,
+        itemCount: 2,
+        termination: "provider_end",
+      },
+    });
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toMatchObject({
+      path: "api/v4/leads",
+      query: [{ name: "page", value: "2" }],
+      operationKind: "read",
+    });
+  });
+
+  test("rejects an unsafe amoCRM body next link before a second request", async () => {
+    const { client, requests } = sequenceClient((request) =>
+      success(request, {
+        _embedded: { leads: [{ id: 1 }] },
+        _links: {
+          next: {
+            href:
+              "https://tenant.amocrm.ru.attacker.test/api/v4/leads?page=2",
+          },
+        },
+      }),
+    );
+    const tool = createPaginateTool({
+      config: runtimeConfig(),
+      client,
+      approvals: createApprovalController(),
+    });
+
+    const result = await tool.execute(
+      "unsafe-amo-body-link",
+      paginateParams(),
+    );
+
+    expect(result.details).toMatchObject({
+      ok: false,
+      error: { code: "unsafe_pagination_link" },
+      outcome: "confirmed_failed",
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  test("rejects conflicting amoCRM header and body next links", async () => {
+    const { client, requests } = sequenceClient((request) =>
+      success(
+        request,
+        {
+          _embedded: { leads: [{ id: 1 }] },
+          _links: {
+            next: {
+              href: "https://tenant.amocrm.ru/api/v4/leads?page=2",
+            },
+          },
+        },
+        {
+          link:
+            "<https://tenant.amocrm.ru/api/v4/leads?page=3>; rel=next",
+        },
+      ),
+    );
+    const tool = createPaginateTool({
+      config: runtimeConfig(),
+      client,
+      approvals: createApprovalController(),
+    });
+
+    const result = await tool.execute(
+      "ambiguous-amo-next",
+      paginateParams(),
+    );
+
+    expect(result.details).toMatchObject({
+      ok: false,
+      error: { code: "ambiguous_pagination_link" },
+      outcome: "confirmed_failed",
+    });
+    expect(requests).toHaveLength(1);
+  });
+
   test("resolves relative next links against a code/config trusted origin", async () => {
     const { client, requests } = sequenceClient((request, index) =>
       success(
